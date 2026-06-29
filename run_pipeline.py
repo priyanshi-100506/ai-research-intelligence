@@ -1,20 +1,8 @@
-import sys
-import os
-
-# Dynamic Root Resolution Layer
-# This looks at the exact file location of run_pipeline.py, finds its directory folder, 
-# and explicitly forces Python to treat it as the primary package look-up space.
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-# Standard imports proceed down below...
 from datetime import datetime
 from app.database.models import init_db, SessionLocal, ScrapedArticle
 from app.scrapers.youtube_scraper import YouTubeScraper
 from app.scrapers.blog_scraper import BlogScraper
 
-# ... rest of your run_pipeline.py remains exactly the same as before ...
 def run_ingestion_pipeline():
     print("Initializing database schemas...")
     init_db()
