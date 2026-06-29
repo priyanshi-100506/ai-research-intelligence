@@ -1,14 +1,19 @@
+import sys
+import os
 from datetime import datetime
-from app.database.models import init_db, SessionLocal, ScrapedArticle
+from app.database.models import init_db, SessionLocal, ScrapedArticle, CuratedArticle
 from app.scrapers.youtube_scraper import YouTubeScraper
 from app.scrapers.blog_scraper import BlogScraper
+from app.services.curator_service import AICuratorService
 
 def run_ingestion_pipeline():
     print("Initializing database schemas...")
     init_db()
     
     db = SessionLocal()
+    curator = AICuratorService()
     
+    # --- PHASE 1: INGESTION ---
     print("\n--- Harvesting Tech Blog Streams ---")
     blog_worker = BlogScraper()
     blog_articles = blog_worker.fetch_recent_articles(max_age_hours=48)
@@ -54,8 +59,46 @@ def run_ingestion_pipeline():
             db.rollback()
             print(f" -> Error writing record: {str(e)}")
             
+    print(f"=== Ingestion Phase Done! Saved: {saved_count} | Duplicates Skipped: {skipped_count} ===")
+
+    # --- PHASE 2: AI CURATION ---
+    print("\n--- Running AI Curation Processing Engine ---")
+    # Grab all raw articles that do NOT have a matching entry in the curated table yet
+    uncurated_records = db.query(ScrapedArticle).filter(
+        ~ScrapedArticle.id.in_(db.query(CuratedArticle.scraped_article_id))
+    ).all()
+    
+    print(f"Found {len(uncurated_records)} uncurated records awaiting analysis.")
+    
+    curated_count = 0
+    for article in uncurated_records:
+        print(f" -> Analyzing: '{article.title[:50]}...'")
+        
+        # Pass data to our Gemini Service agent loop
+        analysis = curator.analyze_content(article.title, article.raw_content)
+        
+        # Turn list fields into database-friendly string tokens smoothly
+        tech_stack_str = ", ".join(analysis.tech_stack) if analysis.tech_stack else "None"
+        
+        new_curated = CuratedArticle(
+            scraped_article_id=article.id,
+            summary=analysis.summary,
+            tech_stack=tech_stack_str,
+            impact_score=analysis.impact_score,
+            justification=analysis.justification
+        )
+        
+        try:
+            db.add(new_curated)
+            db.commit()
+            curated_count += 1
+            print(f"    [Success] Curated with Impact Score: {analysis.impact_score}/10")
+        except Exception as e:
+            db.rollback()
+            print(f"    [Error] Failed to write curated row: {str(e)}")
+            
     db.close()
-    print(f"\n=== Ingestion Completed! Saved: {saved_count} | Duplicates Skipped: {skipped_count} ===")
+    print(f"\n=== Pipeline Engine Finished! Total Processed Items: {curated_count} ===")
 
 if __name__ == "__main__":
     run_ingestion_pipeline()
