@@ -1,0 +1,11 @@
+# Sensitive Environment Secrets
+.env
+
+# Python Virtual Environments & Packages
+.venv/
+__pycache__/
+*.pyc
+
+# Local IDE configuration settings
+.vscode/
+.idea/
