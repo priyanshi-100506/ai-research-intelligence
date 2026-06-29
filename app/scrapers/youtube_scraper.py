@@ -1,7 +1,7 @@
 import yt_dlp
 from datetime import datetime, timezone
 from typing import List, Optional
-from youtube_transcript_api import YouTubeTranscriptApi as yta
+from youtube_transcript_api import YouTubeTranscriptApi
 from app.scrapers.base import ArticleMetadata
 
 class YouTubeScraper:
@@ -62,12 +62,18 @@ class YouTubeScraper:
     def get_transcript(self, video_id: str) -> Optional[str]:
         """
         Extracts spoken captions and joins individual timestamp chunks 
-        into a continuous string. Fails gracefully if captions are disabled.
+        into a continuous string. Resolves structural method update conflicts.
         """
         try:
-            # To this:
-            transcript_list = yta.get_transcript(video_id)
-            full_text = " ".join([block['text'] for block in transcript_list])
+            # Instantiate the fetcher class directly to handle the latest API shifts securely
+            api_instance = YouTubeTranscriptApi()
+            transcript_list = api_instance.list_transcripts(video_id)
+            
+            # Find the primary English transcript (manually created or auto-generated)
+            transcript = transcript_list.find_transcript(['en'])
+            data_blocks = transcript.fetch()
+            
+            full_text = " ".join([block['text'] for block in data_blocks])
             return full_text
         except Exception as e:
             print(f"Skipping transcript extraction for video ID {video_id}: {str(e)}")
