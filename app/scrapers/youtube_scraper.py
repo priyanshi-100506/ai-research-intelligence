@@ -61,13 +61,15 @@ class YouTubeScraper:
 
     def get_transcript(self, video_id: str) -> Optional[str]:
         """
-        Extracts spoken captions and joins individual timestamp chunks 
-        into a continuous string using direct static class execution loops.
+        Extracts spoken captions by instantiating the library client directly 
+        and maps fields to the modern object-oriented schema layout.
         """
         try:
-            # Use direct static execution mapping to avoid attribute lookup crashes
-            transcript_data = YouTubeTranscriptApi.fetch(video_id, languages=['en'])
-            full_text = " ".join([block['text'] for block in transcript_data])
+            client = YouTubeTranscriptApi()
+            transcript_data = client.fetch(video_id, languages=['en'])
+            
+            # Extract out the text directly from the object attribute property
+            full_text = " ".join([block.text for block in transcript_data])
             return full_text
         except Exception as e:
             print(f"Skipping transcript extraction for video ID {video_id}: {str(e)}")
