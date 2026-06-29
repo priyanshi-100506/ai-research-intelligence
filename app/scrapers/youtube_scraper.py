@@ -1,46 +1,74 @@
-import feedparser
+import yt_dlp
 from datetime import datetime, timezone
-import time
 from typing import List, Optional
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi as yta
 from app.scrapers.base import ArticleMetadata
 
 class YouTubeScraper:
     def __init__(self, channel_ids: List[str]):
+        """
+        Initializes the YouTube scraper component.
+        Accepts channel handles (e.g., '@matthew_berman') or raw channel hashes.
+        """
         self.channel_ids = channel_ids
 
-    def fetch_recent_videos(self, max_age_hours: int = 24) -> List[ArticleMetadata]:
+    def fetch_recent_videos(self, max_limit: int = 3) -> List[ArticleMetadata]:
+        """
+        Harvests the absolute latest video metadata objects from target feeds
+        using enterprise flat extraction loops to bypass regional blocks.
+        """
         recent_videos = []
-        now = datetime.now(timezone.utc)
+
+        # Configure yt-dlp option sets to extract metadata maps only without raw multimedia files
+        ydl_opts = {
+            'extract_flat': True,       # Pull index streams only (lightning fast execution)
+            'playlistend': max_limit,   # Limit video items grabbed per target resource
+            'quiet': True,
+            'skip_download': True,
+        }
 
         for channel_id in self.channel_ids:
-            feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-            feed = feedparser.parse(feed_url)
-
-            for entry in feed.entries:
-                published_parsed = entry.published_parsed
-                published_dt = datetime.fromtimestamp(time.mktime(published_parsed), timezone.utc)
-
-                # Only harvest if it falls within our timeline window
-                age_hours = (now - published_dt).total_seconds() / 3600
-                if age_hours <= max_age_hours:
-                    video_id = entry.yt_videoid
+            try:
+                # Format string targets cleanly depending on whether a handle or hash parameter is assigned
+                if channel_id.startswith('@'):
+                    channel_url = f"https://www.youtube.com/{channel_id}/videos"
+                else:
+                    channel_url = f"https://www.youtube.com/channel/{channel_id}/videos"
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(channel_url, download=False)
                     
-                    recent_videos.append(ArticleMetadata(
-                        source_id=channel_id,
-                        article_id=video_id,
-                        title=entry.title,
-                        url=entry.link,
-                        published_at=published_dt
-                    ))
+                    if 'entries' in info:
+                        for entry in info['entries']:
+                            if not entry:
+                                continue
+                            
+                            video_id = entry.get('id')
+                            title = entry.get('title', 'Untitled Video')
+                            video_url = f"https://www.youtube.com/watch?v={video_id}"
+                            
+                            recent_videos.append(ArticleMetadata(
+                                source_id=channel_id,
+                                article_id=video_id,
+                                title=title,
+                                url=video_url,
+                                published_at=datetime.now(timezone.utc)
+                            ))
+            except Exception as e:
+                print(f"Error accessing yt-dlp layer for channel {channel_id}: {str(e)}")
+                
         return recent_videos
 
     def get_transcript(self, video_id: str) -> Optional[str]:
-        """Extracts spoken captions safely without breaking on uncaptioned videos."""
+        """
+        Extracts spoken captions and joins individual timestamp chunks 
+        into a continuous string. Fails gracefully if captions are disabled.
+        """
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            # To this:
+            transcript_list = yta.get_transcript(video_id)
             full_text = " ".join([block['text'] for block in transcript_list])
             return full_text
         except Exception as e:
-            print(f"Skipping transcript for video {video_id}: {str(e)}")
+            print(f"Skipping transcript extraction for video ID {video_id}: {str(e)}")
             return None

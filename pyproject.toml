@@ -12,6 +12,8 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "requests>=2.34.2",
+    "scrapetube>=2.6.0",
     "sqlalchemy>=2.0.51",
     "youtube-transcript-api>=1.2.4",
+    "yt-dlp>=2026.6.9",
 ]
