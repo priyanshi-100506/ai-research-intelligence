@@ -1,0 +1,34 @@
+name: Daily AI Briefing Pipeline
+
+on:
+  schedule:
+    # This runs the pipeline automatically every single day at 01:30 UTC (7:00 AM IST)
+    - cron: '30 1 * * *'
+  workflow_dispatch: # Allows you to manually trigger this anytime from the GitHub website
+
+jobs:
+  run-pipeline:
+    runs-size: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install System Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Execute Aggregator Pipeline Core
+        env:
+          # This securely maps your secret environment variables in the cloud
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          python -m run_pipeline
