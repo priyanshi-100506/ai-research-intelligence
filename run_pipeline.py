@@ -1,6 +1,10 @@
 import sys
 import os
 from datetime import datetime
+
+# Path injection safeguard to guarantee package imports resolve cleanly from anywhere
+sys.path.append(os.getcwd())
+
 from app.database.models import init_db, SessionLocal, ScrapedArticle, CuratedArticle
 from app.scrapers.youtube_scraper import YouTubeScraper
 from app.scrapers.blog_scraper import BlogScraper
@@ -13,7 +17,9 @@ def run_ingestion_pipeline():
     db = SessionLocal()
     curator = AICuratorService()
     
-    # --- PHASE 1: INGESTION ---
+    # ==========================================
+    # --- PHASE 1: INGESTION & DEDUPLICATION ---
+    # ==========================================
     print("\n--- Harvesting Tech Blog Streams ---")
     blog_worker = BlogScraper()
     blog_articles = blog_worker.fetch_recent_articles(max_age_hours=48)
@@ -61,9 +67,11 @@ def run_ingestion_pipeline():
             
     print(f"=== Ingestion Phase Done! Saved: {saved_count} | Duplicates Skipped: {skipped_count} ===")
 
-    # --- PHASE 2: AI CURATION ---
+    # ==========================================
+    # --- PHASE 2: AUTOMATED AI CURATION -------
+    # ==========================================
     print("\n--- Running AI Curation Processing Engine ---")
-    # Grab all raw articles that do NOT have a matching entry in the curated table yet
+    # Query all raw staging rows that do not have a curated relationship match yet
     uncurated_records = db.query(ScrapedArticle).filter(
         ~ScrapedArticle.id.in_(db.query(CuratedArticle.scraped_article_id))
     ).all()
@@ -74,10 +82,7 @@ def run_ingestion_pipeline():
     for article in uncurated_records:
         print(f" -> Analyzing: '{article.title[:50]}...'")
         
-        # Pass data to our Gemini Service agent loop
         analysis = curator.analyze_content(article.title, article.raw_content)
-        
-        # Turn list fields into database-friendly string tokens smoothly
         tech_stack_str = ", ".join(analysis.tech_stack) if analysis.tech_stack else "None"
         
         new_curated = CuratedArticle(
@@ -99,6 +104,23 @@ def run_ingestion_pipeline():
             
     db.close()
     print(f"\n=== Pipeline Engine Finished! Total Processed Items: {curated_count} ===")
+
+    # ==========================================
+    # --- PHASE 3: MAIL DISPATCH BRIEFING ------
+    # ==========================================
+    # Only execute email delivery if new high-impact intelligence records were added during this run
+    if True:
+        print("\n--- Triggering Morning Automated Email Broadcast Routine ---")
+        from app.services.email_service import EmailNotificationService
+        
+        # 💡 Set this to the exact email address you used to register your Resend account!
+        MY_INBOX = "priyanshicshah@gmail.com" 
+        
+        try:
+            mailer = EmailNotificationService()
+            mailer.send_daily_briefing(recipient_email=MY_INBOX)
+        except Exception as mail_err:
+            print(f"⚠️ Notification Layer Failure: {str(mail_err)}")
 
 if __name__ == "__main__":
     run_ingestion_pipeline()
