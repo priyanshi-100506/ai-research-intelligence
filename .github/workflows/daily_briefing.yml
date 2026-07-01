@@ -2,8 +2,8 @@ name: Daily AI Briefing Pipeline
 
 on:
   schedule:
-    - cron: '30 1 * * *'  # 7:00 AM IST
-  workflow_dispatch:      # Manual trigger
+    - cron: '30 1 * * *'  # Executes at 7:00 AM IST (1:30 AM UTC) daily
+  workflow_dispatch:      # Allows immediate manual execution overrides via UI
 
 jobs:
   run-pipeline:
@@ -13,23 +13,25 @@ jobs:
       - name: Checkout Code Architecture
         uses: actions/checkout@v4
 
-      # Explicitly provision Python 3.13 to prevent runtime version drift
+      # Explicitly provision Python 3.13 to prevent runner runtime version drift
       - name: Initialize Python Runtime Context
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      # Use the native uv installer action for speed and lockfile sync
+      # Initialize Astral uv package manager with native global runners caching
       - name: Setup UV Package Infrastructure
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
           enable-cache: true
 
+      # Sync dependencies directly to the runner's system environment path
       - name: Sync Production Dependencies
         run: |
-          uv pip install -r requirements.txt
+          uv pip install --system -r requirements.txt
 
+      # Execute the pipeline with secure environment credential injection
       - name: Execute Engineering Intelligence Pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -37,4 +39,4 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RECIPIENT_EMAIL: "priyanshicshah@gmail.com"
         run: |
-          uv run python run_pipeline.py
+          python run_pipeline.py
