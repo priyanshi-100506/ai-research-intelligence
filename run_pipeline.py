@@ -19,7 +19,7 @@ TECH_DOMAINS = ["Large Language Models", "System Design Architecture", "Cloud In
 MY_INBOX = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
 
 async def run_v2_streaming_pipeline():
-    logging.info("Initializing hardened database storage layer schemas...")
+    logging.format = '%(asctime)s - %(levelname)s - %(message)s'
     init_db()
     
     db = SessionLocal()
@@ -30,14 +30,13 @@ async def run_v2_streaming_pipeline():
     all_extracted_items = []
     
     # 1. CONCURRENT DATA HARVESTING
-    logging.info(f"Spawning concurrent non-blocking connection pool across domains: {TECH_DOMAINS}")
     async with httpx.AsyncClient() as client:
         tasks = [api_extractor.query_keyword_stream_async(client, domain, limit=3) for domain in TECH_DOMAINS]
         results = await asyncio.gather(*tasks)
         for batch in results:
             all_extracted_items.extend(batch)
 
-    logging.info(f"Ingested {len(all_extracted_items)} prospective records from web endpoints. Processing state upserts...")
+    logging.info(f"Ingested {len(all_extracted_items)} prospective records from web endpoints.")
 
     # 2. STATE-AWARE DB DEDUPLICATION & OVERWRITE LAYER
     new_or_modified_article_ids = []
@@ -73,21 +72,17 @@ async def run_v2_streaming_pipeline():
                 new_or_modified_article_ids.append(record.id)
         except Exception as db_err:
             db.rollback()
-            logging.error(f"Atomic upsert failed for url [{item.url[:30]}]: {str(db_err)}")
             continue
 
-    # 3. ON-THE-FLY INTELLIGENCE SYNTHESIS BATCHING WITH RATE BALANCING
+    # 3. ON-THE-FLY INTELLIGENCE BATCHING WITH RESOURCE CAUGHT EXCEPTION HANDLING
     if new_or_modified_article_ids:
-        logging.info(f"🚨 Delta verified across {len(new_or_modified_article_ids)} nodes. Launching Gemini curation pipeline...")
+        logging.info(f"🚨 Delta verified across {len(new_or_modified_article_ids)} nodes.")
         for index, article_id in enumerate(new_or_modified_article_ids):
-            
-            # UPGRADE: Defensive rate-limiting buffer for Gemini Free Tier (5 RPM)
             if index > 0:
-                logging.info("Applying dynamic rate pacing buffer (12.5s) to avoid API resource exhaustion...")
                 await asyncio.sleep(12.5)
                 
             article = db.query(ScrapedArticle).filter(ScrapedArticle.id == article_id).first()
-            logging.info(f"Submitting schema contract to Gemini for: '{article.title[:35]}...'")
+            logging.info(f"Submitting to Gemini: '{article.title[:35]}...'")
             try:
                 analysis = curator.analyze_content(article.title, article.raw_content)
                 tech_stack_str = ", ".join(analysis.tech_stack) if analysis.tech_stack else "None"
@@ -100,21 +95,22 @@ async def run_v2_streaming_pipeline():
                     justification=analysis.justification
                 ))
                 db.commit()
-                logging.info(f"Stored structured metrics. Calculated Technical Impact: {analysis.impact_score}/10")
             except Exception as ai_err:
                 db.rollback()
-                logging.error(f"Gemini schema processing dropped for node {article_id}: {str(ai_err)}")
+                err_msg = str(ai_err)
+                # SYSTEM RESILIENCE HACK: Catch a 429 quota exhaustion string cleanly
+                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                    logging.warning(f"⚠️ Daily Gemini quota ceiling reached for token stack. Deferring item curation loop...")
+                    break # Safely stop executing rather than polluting your database tracking layers with error flags
                 continue
 
     # 4. DISPATCH PRESENTATION LAYER DYNAMICALLY
-    logging.info("Executing relational data payload gathering for newsletter packaging...")
     try:
         mailer.send_daily_briefing(recipient_email=MY_INBOX)
     except Exception as dispatch_error:
-        logging.error(f"Newsletter presentation delivery layer drop: {str(dispatch_error)}")
+        logging.error(f"Newsletter delivery layer error: {str(dispatch_error)}")
 
     db.close()
-    logging.info("Pipeline V2 loop executed smoothly. Storage layers fully synchronized.")
-
+    logging.info("Pipeline storage synchronization loops closed gracefully.")
 if __name__ == "__main__":
     asyncio.run(run_v2_streaming_pipeline())
