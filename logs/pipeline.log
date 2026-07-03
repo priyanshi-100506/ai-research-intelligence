@@ -1,2 +1,10 @@
 2026-07-03 19:06:41,761 - INFO - Fetching data for: System Design Architecture
 2026-07-03 19:06:50,208 - INFO - Report dispatched successfully.
+2026-07-03 19:30:34,936 - INFO - Fetching data for: Cloud Infrastructure
+2026-07-03 19:30:34,944 - INFO - Fetching data for: System Design Architecture
+2026-07-03 19:30:34,945 - INFO - Fetching data for: Large Language Models
+2026-07-03 19:30:34,945 - INFO - Fetching data for: AI Agents
+2026-07-03 19:30:34,945 - INFO - Fetching data for: Cybersecurity
+2026-07-03 19:30:34,946 - INFO - Fetching data for: Database Scaling
+2026-07-03 19:30:36,247 - INFO - Successfully aggregated 30 total articles.
+2026-07-03 19:35:14,797 - INFO - Pipeline complete. Aggregated 30 total articles.
