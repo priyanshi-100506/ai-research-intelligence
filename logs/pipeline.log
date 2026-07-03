@@ -8,3 +8,4 @@
 2026-07-03 19:30:34,946 - INFO - Fetching data for: Database Scaling
 2026-07-03 19:30:36,247 - INFO - Successfully aggregated 30 total articles.
 2026-07-03 19:35:14,797 - INFO - Pipeline complete. Aggregated 30 total articles.
+2026-07-03 19:42:03,863 - INFO - Pipeline processed 30 articles with database-level deduplication.
