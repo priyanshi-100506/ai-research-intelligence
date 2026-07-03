@@ -1,0 +1,45 @@
+﻿name: Daily AI Briefing Pipeline
+
+on:
+  schedule:
+    # Wakes up automatically at 01:30 AM UTC (7:00 AM IST daily)
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+    # Keeps the manual trigger button active in your repository dashboard
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code Architecture
+        uses: actions/checkout@v4
+
+      - name: Initialize Python Runtime Context
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup UV Package Infrastructure
+        # UPGRADE: Pinned to an immutable version release to comply with Astral's new deployment protocol
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Sync Production Dependencies
+        run: |
+          # Installs dependencies globally inside the container environment instantly using uv
+          uv pip install --system -r requirements.txt
+          uv pip install --system psycopg2-binary
+
+      - name: Execute Engineering Intelligence Pipeline
+        env:
+          # Securely injects your encrypted repository credentials at runtime
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RECIPIENT_EMAIL: "priyanshicshah@gmail.com"
+        run: |
+          # Trigger the core Python script sequence directly
+          python run_pipeline.py
