@@ -14,12 +14,12 @@ class EmailNotificationService:
         db = SessionLocal()
         time_threshold = datetime.utcnow() - timedelta(hours=24)
         
-        # 1. Fetch recent entries sorted by impact score so the highest quality items load first
+        # 1. Fetch recent entries sorted by curation id descending so the newest curations load first
         results = (
             db.query(ScrapedArticle, CuratedArticle)
             .join(CuratedArticle, ScrapedArticle.id == CuratedArticle.scraped_article_id)
             .filter(ScrapedArticle.created_at >= time_threshold)
-            .order_by(CuratedArticle.impact_score.desc())
+            .order_by(CuratedArticle.id.desc())
             .all()
         )
         
@@ -28,27 +28,27 @@ class EmailNotificationService:
             db.close()
             return
 
-        # 2. Group items while strictly filtering out duplicate URLs and error traces
+        # 2. Group items while enforcing strict structural deduplication
         section_matrix = defaultdict(list)
-        seen_urls = set()
+        processed_article_ids = set()
 
         for scraped, curated in results:
-            # DEFENSIVE GUARD: Skip any leftover 429 quota traces entirely
-            if curated.justification and "RESOURCE_EXHAUSTED" in curated.justification:
+            # DEDUPLICATION CORE GUARD: If we already parsed the newest curation for this article, skip older rows
+            if scraped.id in processed_article_ids:
                 continue
                 
-            # DEDUPLICATION GUARD: If we already captured a cleaner version of this URL in this batch, skip the duplicate
-            if scraped.url in seen_urls:
+            # SAFETY FILTER: Skip any leftover 429 quota traces or failed content placeholders
+            if curated.impact_score <= 1 or (curated.justification and "RESOURCE_EXHAUSTED" in curated.justification):
                 continue
                 
-            seen_urls.add(scraped.url)
+            processed_article_ids.add(scraped.id)
             display_category = scraped.category or "General Systems Engineering"
             section_matrix[display_category].append((scraped, curated))
 
         # 3. Build the section-grouped HTML body script
         sections_html_buffer = ""
         for category, articles in section_matrix.items():
-            if not articles: # Skip rendering headers for empty sections
+            if not articles:
                 continue
                 
             sections_html_buffer += f"""
