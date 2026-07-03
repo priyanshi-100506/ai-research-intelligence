@@ -1,18 +1,21 @@
-﻿import sys
-import os
-import pytest
+﻿import pytest
+from unittest.mock import MagicMock
+from app.core.models import Article
+from app.services.storage import StorageService
 
-# Add the project root to sys.path so it can find run_pipeline
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from run_pipeline import fetch_news
-
-def test_fetch_news_connectivity():
-    data = fetch_news("AI")
-    assert isinstance(data, list)
-
-def test_article_structure():
-    data = fetch_news("Cloud Infrastructure")
-    if len(data) > 0:
-        assert 'title' in data[0]
-        assert 'url' in data[0]
+def test_storage_save_articles():
+    # Setup mock engine
+    mock_engine = MagicMock()
+    storage = StorageService(mock_engine)
+    
+    # Simulate some Article objects
+    articles = [
+        Article(article_id='1', title='Test 1', url='http://test1.com'),
+        Article(article_id='2', title='Test 2', url='http://test2.com')
+    ]
+    
+    # Trigger the save
+    storage.save_articles(articles)
+    
+    # Assert that the engine's begin method was called (verifying the transaction started)
+    assert mock_engine.begin.called
