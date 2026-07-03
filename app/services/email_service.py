@@ -12,10 +12,9 @@ class EmailNotificationService:
 
     def send_daily_briefing(self, recipient_email: str):
         db = SessionLocal()
-        
-        # 1. Fetch all articles processed in the last 24 hours that possess curation scores
         time_threshold = datetime.utcnow() - timedelta(hours=24)
         
+        # 1. Fetch recent entries sorted by impact score so the highest quality items load first
         results = (
             db.query(ScrapedArticle, CuratedArticle)
             .join(CuratedArticle, ScrapedArticle.id == CuratedArticle.scraped_article_id)
@@ -29,17 +28,29 @@ class EmailNotificationService:
             db.close()
             return
 
-        # 2. Algorithmic Grouping: Sort records into their distinct tech categories
+        # 2. Group items while strictly filtering out duplicate URLs and error traces
         section_matrix = defaultdict(list)
+        seen_urls = set()
+
         for scraped, curated in results:
-            # Fallback handling for missing text data strings safely
+            # DEFENSIVE GUARD: Skip any leftover 429 quota traces entirely
+            if curated.justification and "RESOURCE_EXHAUSTED" in curated.justification:
+                continue
+                
+            # DEDUPLICATION GUARD: If we already captured a cleaner version of this URL in this batch, skip the duplicate
+            if scraped.url in seen_urls:
+                continue
+                
+            seen_urls.add(scraped.url)
             display_category = scraped.category or "General Systems Engineering"
             section_matrix[display_category].append((scraped, curated))
 
-        # 3. Component Assembly: Build the section-grouped HTML body script
+        # 3. Build the section-grouped HTML body script
         sections_html_buffer = ""
-        
         for category, articles in section_matrix.items():
+            if not articles: # Skip rendering headers for empty sections
+                continue
+                
             sections_html_buffer += f"""
             <div style="margin-top: 30px; margin-bottom: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">
                 <h3 style="color: #4f46e5; text-transform: uppercase; font-size: 13px; font-weight: 800; letter-spacing: 0.05em; margin: 0;">
@@ -49,7 +60,6 @@ class EmailNotificationService:
             """
             
             for scraped, curated in articles:
-                # Setup visual badges for deep tech stacks dynamically
                 stack_badges = ""
                 if curated.tech_stack and curated.tech_stack != "None":
                     for tech in curated.tech_stack.split(","):
@@ -61,7 +71,7 @@ class EmailNotificationService:
                         <h4 style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.4;">
                             <a href="{scraped.url}" style="color: #1e293b; text-decoration: none; border-bottom: 1px solid #cbd5e1;">{scraped.title}</a>
                         </h4>
-                        <span style="font-size: 11px; font-weight: bold; color: #b91c1c; background-color: #fef2f2; padding: 2px 6px; border-radius: 9999px; white-space: nowrap; margin-left: 10px;">
+                        <span style="font-size: 11px; font-weight: bold; color: #166534; background-color: #f0fdf4; padding: 2px 6px; border-radius: 9999px; white-space: nowrap; margin-left: 10px;">
                             Impact: {curated.impact_score}/10
                         </span>
                     </div>
@@ -97,15 +107,14 @@ class EmailNotificationService:
         </html>
         """
 
-        # 5. Gateway Dispatch Execution
         try:
             resend.Emails.send({
                 "from": self.sender,
                 "to": recipient_email,
-                "subject": f"🎯 Engineering Briefing: {len(results)} New Core Architecture Deltas",
+                "subject": f"🎯 Engineering Briefing: Categorized Technical Deltas",
                 "html": full_email_payload
             })
-            logging.info(f"Grouped newsletter email successfully sent to {recipient_email}")
+            logging.info(f"Cleaned category-grouped newsletter successfully sent to {recipient_email}")
         except Exception as mail_err:
             logging.error(f"Resend transaction failed: {str(mail_err)}")
             
