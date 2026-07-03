@@ -1,4 +1,5 @@
-Design Philosophy
+# Design Philosophy
+
 This project follows a "Reliability First" approach. Rather than prematurely optimizing for scale (e.g., distributed workers), the focus of Version 2 was establishing a deterministic data pipeline. By enforcing Pydantic-based schema contracts and PostgreSQL-backed state, we have created a robust foundation that makes future scaling to an asynchronous, message-queue-driven architecture both safer and more predictable.
 
 # Architecture
