@@ -1,9 +1,10 @@
-import feedparser
+﻿import feedparser
 from datetime import datetime, timezone
 import time
 from typing import List
-from app.scrapers.base import ArticleMetadata
-from html_to_markdown import convert 
+from app.scrapers.base import ArticleMetadata, BaseProvider
+from html_to_markdown import convert
+from app.database.models import SessionLocal, ScrapedArticle
 
 class BlogScraper:
     def __init__(self):
@@ -15,22 +16,15 @@ class BlogScraper:
     def fetch_recent_articles(self, max_age_hours: int = 24) -> List[ArticleMetadata]:
         recent_articles = []
         now = datetime.now(timezone.utc)
-
         for source_name, feed_url in self.feeds.items():
             feed = feedparser.parse(feed_url)
-
             for entry in feed.entries:
                 published_parsed = getattr(entry, 'published_parsed', None) or getattr(entry, 'updated_parsed', None)
-                if not published_parsed:
-                    continue
-
+                if not published_parsed: continue
                 published_dt = datetime.fromtimestamp(time.mktime(published_parsed), timezone.utc)
-                age_hours = (now - published_dt).total_seconds() / 3600
-
-                if age_hours <= max_age_hours:
+                if (now - published_dt).total_seconds() / 3600 <= max_age_hours:
                     raw_html = getattr(entry, 'description', '') or getattr(entry, 'summary', '')
                     clean_markdown = str(convert(raw_html)) if raw_html else ""
-
                     recent_articles.append(ArticleMetadata(
                         source_id=source_name,
                         article_id=entry.id if hasattr(entry, 'id') else entry.link,
@@ -40,3 +34,23 @@ class BlogScraper:
                         raw_content=clean_markdown
                     ))
         return recent_articles
+
+    def fetch_and_save_news(self):
+        db = SessionLocal()
+        try:
+            articles = self.fetch_recent_articles()
+            for meta in articles:
+                if not db.query(ScrapedArticle).filter_by(article_id=meta.article_id).first():
+                    new_article = ScrapedArticle(
+                        article_id=meta.article_id,
+                        source_id=meta.source_id,
+                        title=meta.title,
+                        url=meta.url,
+                        published_at=meta.published_at,
+                        raw_content=meta.raw_content
+                    )
+                    db.add(new_article)
+            db.commit()
+            print(f"Successfully processed {len(articles)} articles.")
+        finally:
+            db.close()

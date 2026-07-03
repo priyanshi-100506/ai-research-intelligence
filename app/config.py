@@ -1,8 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
-
-# Ensure the .env file is loaded
-load_dotenv()
+import os
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -11,8 +8,10 @@ class Settings(BaseSettings):
     NEWS_API_KEY: str
     RECIPIENT_EMAIL: str
 
-    # This maps the environment variables to the class attributes
-    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
-# Initialize settings
 settings = Settings()
