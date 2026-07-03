@@ -4,13 +4,35 @@ import httpx
 import asyncio
 import logging
 import resend
+from datetime import datetime, timezone
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.dialects.postgresql import insert
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 
 TECH_DOMAINS = ["Large Language Models", "System Design Architecture", "Cloud Infrastructure"]
 MY_INBOX = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
-currents_key = os.getenv("NEWS_API_KEY")
+
+db_url = os.getenv("DATABASE_URL")
 resend_key = os.getenv("RESEND_API_KEY")
+currents_key = os.getenv("NEWS_API_KEY")
+
+if not all([db_url, resend_key, currents_key]):
+    logging.error("❌ Production Secrets Missing in running context environment!")
+    sys.exit(1)
+
+Base = declarative_base()
+
+class ScrapedArticle(Base):
+    __tablename__ = 'scraped_articles'
+    id = Column(Integer, primary_key=True)
+    source_id = Column(String, nullable=False)
+    article_id = Column(String, unique=True)
+    title = Column(String)
+    url = Column(String)
+    raw_content = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 async def fetch_realtime_news(client, keyword, api_key):
     url = "https://api.currentsapi.services/v1/search"
@@ -20,11 +42,16 @@ async def fetch_realtime_news(client, keyword, api_key):
         if res.status_code == 200:
             return res.json().get("news", [])
     except Exception as e:
-        logging.error(f"Scraper error: {e}")
+        logging.error(f"Error scraping {keyword}: {e}")
     return []
 
 async def main():
-    logging.info("⚡ FORCING REAL-TIME DELIVERY PASS...")
+    logging.info("Checking Currents API for live breaking technical deltas...")
+    engine = create_engine(db_url, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    Base.metadata.create_all(engine)
     
     all_articles = []
     async with httpx.AsyncClient() as client:
@@ -33,13 +60,42 @@ async def main():
         for batch in results:
             if batch: all_articles.extend(batch)
 
-    if all_articles:
-        logging.info(f"✅ Successfully grabbed {len(all_articles)} live stories from the wire. Dispatching top 3 immediately...")
+    new_article_deltas = []
+    current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for art in all_articles:
+        uid = art.get("url")
+        if not uid: continue
+        
+        stmt = insert(ScrapedArticle).values(
+            source_id="CurrentsAPI",
+            article_id=uid,
+            title=art.get("title", "Breaking Architecture Alert"),
+            url=uid,
+            raw_content=art.get("description", "No raw context summary supplied."),
+            created_at=current_time
+        )
+        
+        upsert_stmt = stmt.on_conflict_do_nothing(index_elements=['article_id'])
+        
+        try:
+            res = session.execute(upsert_stmt)
+            session.commit()
+            if res.rowcount > 0:
+                new_article_deltas.append(art)
+        except Exception as err:
+            session.rollback()
+            continue
+
+    logging.info(f"📊 Real-Time Delta Check: Identified {len(new_article_deltas)} brand new breaking entries.")
+
+    if new_article_deltas:
+        logging.info("🚀 New dynamic developments detected! Transmitting instant news drop...")
         resend.api_key = resend_key
         
         html_items = ""
         seen_urls = set()
-        for art in all_articles:
+        for art in new_article_deltas:
             url = art.get("url")
             if url in seen_urls: continue
             seen_urls.add(url)
@@ -50,27 +106,35 @@ async def main():
                 <p style='color:#475569; font-size:13px; margin:0;'>{art.get("description")}</p>
             </div>
             """
-            if len(seen_urls) >= 3: break
+            if len(seen_urls) >= 3:
+                break
             
         email_body = f"""
         <html>
             <body style="font-family: sans-serif; color: #1e293b; padding: 20px;">
-                <h2 style="color: #4f46e5; margin-top: 0;">⚡ Live Technical News Drop (Force Pass)</h2>
-                <p style="font-size: 14px; color: #64748b;">Here is the active stream data currently on the wire:</p>
+                <h2 style="color: #4f46e5; margin-top: 0;">⚡ Live Technical News Drop</h2>
+                <p style="font-size: 14px; color: #64748b;">The tracking engine identified the following live updates on the wire:</p>
                 {html_items}
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;"/>
+                <small style="color: #94a3b8;">Event-Driven Processing Grid • Synced to Real-Time Streams</small>
             </body>
         </html>
         """
         
-        resend.Emails.send({
-            "from": "onboarding@resend.dev",
-            "to": MY_INBOX,
-            "subject": "⚡ Live Technical Drop: Forced Verification Pass",
-            "html": email_body
-        })
-        logging.info("🎉 Verification email dispatched successfully!")
+        try:
+            resend.Emails.send({
+                "from": "onboarding@resend.dev",
+                "to": MY_INBOX,
+                "subject": f"⚡ Live Technical Drop: New Updates Available",
+                "html": email_body
+            })
+            logging.info(f"🎉 Alert email successfully sent to {MY_INBOX}!")
+        except Exception as m_err:
+            logging.error(f"Mailer delivery failed: {m_err}")
     else:
-        logging.warning("❌ No news found on the wire.")
+        logging.info("💤 Zero new real-time changes breaking since last check. Exiting branch cleanly.")
+
+    session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
