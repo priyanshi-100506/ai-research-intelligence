@@ -25,11 +25,11 @@ async def run_v2_streaming_pipeline():
     db = SessionLocal()
     api_extractor = ApiIngestionWorker()
     curator = AICuratorService()
-    mailer = EmailNotificationService()  # Instantiating the grouped presentation node
+    mailer = EmailNotificationService()
     
     all_extracted_items = []
     
-    # 1. CONCURRENT DATA HARVESTING (I/O BOUND OPTIMIZATION)
+    # 1. CONCURRENT DATA HARVESTING
     logging.info(f"Spawning concurrent non-blocking connection pool across domains: {TECH_DOMAINS}")
     async with httpx.AsyncClient() as client:
         tasks = [api_extractor.query_keyword_stream_async(client, domain, limit=3) for domain in TECH_DOMAINS]
@@ -76,10 +76,16 @@ async def run_v2_streaming_pipeline():
             logging.error(f"Atomic upsert failed for url [{item.url[:30]}]: {str(db_err)}")
             continue
 
-    # 3. ON-THE-FLY INTELLIGENCE SYNTHESIS BATCHING
+    # 3. ON-THE-FLY INTELLIGENCE SYNTHESIS BATCHING WITH RATE BALANCING
     if new_or_modified_article_ids:
         logging.info(f"🚨 Delta verified across {len(new_or_modified_article_ids)} nodes. Launching Gemini curation pipeline...")
-        for article_id in new_or_modified_article_ids:
+        for index, article_id in enumerate(new_or_modified_article_ids):
+            
+            # UPGRADE: Defensive rate-limiting buffer for Gemini Free Tier (5 RPM)
+            if index > 0:
+                logging.info("Applying dynamic rate pacing buffer (12.5s) to avoid API resource exhaustion...")
+                await asyncio.sleep(12.5)
+                
             article = db.query(ScrapedArticle).filter(ScrapedArticle.id == article_id).first()
             logging.info(f"Submitting schema contract to Gemini for: '{article.title[:35]}...'")
             try:
