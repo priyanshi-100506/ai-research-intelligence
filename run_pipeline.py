@@ -1,15 +1,17 @@
-﻿import requests, resend, os
+﻿from app.core.logger import get_logger
 from datetime import datetime
+import requests, resend, os
 from sqlalchemy import create_engine
 from app.core.config import settings
 from app.core.schemas import Article
 
-# Initialize Engine
+# Initialize logger and settings
+logger = get_logger('pipeline')
 resend.api_key = settings.RESEND_API_KEY
 engine = create_engine(settings.DATABASE_URL)
 
 def fetch_news(keyword):
-    print(f'Fetching data for: {keyword}')
+    logger.info(f"Fetching data for: {keyword}")
     url = 'https://api.currentsapi.services/v1/search'
     params = {'keywords': keyword, 'language': 'en', 'apiKey': settings.NEWS_API_KEY, 'page_size': 5}
     response = requests.get(url, params=params)
@@ -20,7 +22,6 @@ def send_formal_report(articles):
     if not articles: return
     table_rows = ''.join([f'<tr><td style="padding:10px; border:1px solid #ddd;">{a.title}</td><td style="padding:10px; border:1px solid #ddd;"><a href="{a.url}">Link</a></td></tr>' for a in articles])
     
-    # Use os.path.join for cross-platform compatibility
     template_path = os.path.join('app', 'services', 'email_template.html')
     with open(template_path, 'r') as f:
         html = f.read().format(table_rows=table_rows)
@@ -31,7 +32,7 @@ def send_formal_report(articles):
         'subject': 'Technical Ingestion Report',
         'html': html
     })
-    print('Report dispatched successfully.')
+    logger.info("Report dispatched successfully.")
 
 if __name__ == '__main__':
     KEYWORDS = ['Cloud Infrastructure', 'System Design Architecture', 'Large Language Models', 'AI Agents', 'Cybersecurity', 'Database Scaling']
@@ -43,6 +44,6 @@ if __name__ == '__main__':
         if articles:
             send_formal_report(articles)
         else:
-            print('No data retrieved this hour.')
+            logger.info("No data retrieved this hour.")
     except Exception as e:
-        print(f'Pipeline error: {e}')
+        logger.error(f"Pipeline error: {e}")
