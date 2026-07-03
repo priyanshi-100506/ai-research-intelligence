@@ -1,105 +1,135 @@
 ﻿import os
 import sys
+import httpx
+import asyncio
 import logging
 import resend
-from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey
+from datetime import datetime, timezone
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.dialects.postgresql import insert
 
-# Set up raw terminal stdout streams so GitHub handles logs instantly
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 
-logging.info("📢 DIAGNOSTIC START: Initializing Self-Contained Test Engine...")
+# Production Keyword Streams
+TECH_DOMAINS = ["Large Language Models", "System Design Architecture", "Cloud Infrastructure"]
+MY_INBOX = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
 
-# Read Environment Variables
 db_url = os.getenv("DATABASE_URL")
 resend_key = os.getenv("RESEND_API_KEY")
-target_email = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
+currents_key = os.getenv("NEWS_API_KEY") # Reads your fresh real-time token seamlessly
 
-logging.info(f"🔑 Env Verify - DATABASE_URL Present: {bool(db_url)}")
-logging.info(f"🔑 Env Verify - RESEND_API_KEY Present: {bool(resend_key)}")
-logging.info(f"🔑 Env Verify - Destination Address: {target_email}")
-
-if not db_url or not resend_key:
-    logging.error("❌ CRITICAL: Missing vital cloud environment secrets. Stopping test loop.")
+if not all([db_url, resend_key, currents_key]):
+    logging.error("❌ Production Secrets Missing in running context environment!")
     sys.exit(1)
 
-# Configure Minimal Schema Layer to match your table names
 Base = declarative_base()
 
 class ScrapedArticle(Base):
     __tablename__ = 'scraped_articles'
     id = Column(Integer, primary_key=True)
+    article_id = Column(String, unique=True)
     title = Column(String)
     url = Column(String)
+    raw_content = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-class CuratedArticle(Base):
-    __tablename__ = 'curated_articles'
-    id = Column(Integer, primary_key=True)
-    scraped_article_id = Column(Integer, ForeignKey('scraped_articles.id'))
-    summary = Column(Text)
-    justification = Column(Text)
+async def fetch_realtime_news(client, keyword, api_key):
+    # Switches query structure to hit Currents API's real-time extraction pipeline
+    url = "https://api.currentsapi.services/v1/search"
+    params = {
+        "keywords": keyword,
+        "language": "en",
+        "apiKey": api_key
+    }
+    try:
+        res = await client.get(url, params=params)
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("news", [])
+    except Exception as e:
+        logging.error(f"Error scraping {keyword} from real-time stream: {e}")
+    return []
 
-try:
-    logging.info("Connecting to Neon Cloud Infrastructure...")
+async def main():
+    logging.info("Checking Currents API for live breaking technical deltas...")
     engine = create_engine(db_url, pool_pre_ping=True)
     Session = sessionmaker(bind=engine)
     session = Session()
     
-    logging.info("Querying records from cloud tables...")
-    results = (
-        session.query(ScrapedArticle, CuratedArticle)
-        .join(CuratedArticle, ScrapedArticle.id == CuratedArticle.scraped_article_id)
-        .all()
-    )
+    Base.metadata.create_all(engine)
     
-    logging.info(f"📊 Neon Query Success: Found total of {len(results)} rows.")
-    
-    # Build HTML list
-    html_items = ""
-    if results:
-        for scraped, curated in results[:5]:
-            html_items += f"<li><b>{scraped.title}</b><br/>{curated.summary}</li>"
+    all_articles = []
+    async with httpx.AsyncClient() as client:
+        tasks = [fetch_realtime_news(client, kw, currents_key) for kw in TECH_DOMAINS]
+        results = await asyncio.gather(*tasks)
+        for batch in results:
+            if batch: all_articles.extend(batch)
+
+    new_article_deltas = []
+    current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for art in all_articles:
+        uid = art.get("url")
+        if not uid: continue
+        
+        stmt = insert(ScrapedArticle).values(
+            article_id=uid,
+            title=art.get("title", "Breaking Architecture Alert"),
+            url=uid,
+            raw_content=art.get("description", "No raw context summary supplied."),
+            created_at=current_time
+        )
+        
+        upsert_stmt = stmt.on_conflict_do_nothing(index_elements=['article_id'])
+        res = session.execute(upsert_stmt)
+        session.commit()
+        
+        if res.rowcount > 0:
+            new_article_deltas.append(art)
+
+    logging.info(f"📊 Real-Time Delta Check: Identified {len(new_article_deltas)} brand new breaking entries.")
+
+    if new_article_deltas:
+        logging.info("🚀 New dynamic developments detected! Transmitting instant news drop...")
+        resend.api_key = resend_key
+        
+        html_items = ""
+        # Take the top 3 high-signal newly dropped articles to list in the notification email
+        for art in new_article_deltas[:3]:
+            html_items += f"""
+            <div style='margin-bottom: 20px; padding: 15px; background: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 4px;'>
+                <h4 style='margin:0 0 5px 0;'><a href='{art.get("url")}' style='color:#1e293b; text-decoration:none; font-weight:bold;'>{art.get("title")}</a></h4>
+                <p style='color:#475569; font-size:13px; margin:0;'>{art.get("description")}</p>
+            </div>
+            """
+            
+        email_body = f"""
+        <html>
+            <body style="font-family: sans-serif; color: #1e293b; padding: 20px;">
+                <h2 style="color: #4f46e5; margin-top: 0;">⚡ Live Technical News Drop</h2>
+                <p style="font-size: 14px; color: #64748b;">The tracking engine identified the following live updates on the wire:</p>
+                {html_items}
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;"/>
+                <small style="color: #94a3b8;">Event-Driven Processing Grid • Synced to Real-Time Streams</small>
+            </body>
+        </html>
+        """
+        
+        try:
+            resend.Emails.send({
+                "from": "onboarding@resend.dev",
+                "to": MY_INBOX,
+                "subject": f"⚡ Live Technical Drop: {len(new_article_deltas)} New Technical Updates",
+                "html": email_body
+            })
+            logging.info(f"🎉 Alert email successfully sent to {MY_INBOX}!")
+        except Exception as m_err:
+            logging.error(f"Mailer delivery failed: {m_err}")
     else:
-        html_items = "<li>No elements found in table cache rows yet. This is a baseline transmission test!</li>"
+        logging.info("💤 Zero new real-time changes breaking since last check. Exiting branch cleanly.")
 
-except Exception as db_err:
-    logging.error(f"❌ DATABASE FAILURE: Failed to communicate with Neon pool: {str(db_err)}")
-    sys.exit(1)
-
-# Dispatch Layer Verification
-try:
-    logging.info("Initializing Resend gateway configuration...")
-    resend.api_key = resend_key
-    
-    email_body = f"""
-    <html>
-        <body>
-            <h2>🚀 Pipeline Diagnostic Verification Pass</h2>
-            <p>Connection from GitHub Action runner to Neon completed smoothly.</p>
-            <ul>{html_items}</ul>
-            <hr/>
-            <small>Timestamp: {datetime.now().isoformat()}</small>
-        </body>
-    </html>
-    """
-    
-    logging.info(f"Submitting payload transit request to onboarding@resend.dev -> {target_email}...")
-    response = resend.Emails.send({
-        "from": "onboarding@resend.dev",
-        "to": target_email,
-        "subject": "🚀 Technical Pipeline Connection Verification",
-        "html": email_body
-    })
-    logging.info(f"🎉 API SUCCESS! Resend accepted transit. ID reference token: {response}")
-
-except Exception as mail_err:
-    logging.error(f"❌ MAILER GATEWAY REJECTION: Resend refused or blocked request: {str(mail_err)}")
-
-finally:
     session.close()
-    logging.info("📢 DIAGNOSTIC COMPLETE: Engine wrapping up cleanly.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
