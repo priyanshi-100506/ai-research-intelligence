@@ -1,120 +1,105 @@
-﻿import sys
-import os
-import httpx
-import asyncio
+﻿import os
+import sys
 import logging
-from datetime import datetime, timezone
-from sqlalchemy.dialects.postgresql import insert
+import resend
+from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-sys.path.append(os.getcwd())
+# Set up raw terminal stdout streams so GitHub handles logs instantly
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
-from app.database.models import init_db, SessionLocal, ScrapedArticle, CuratedArticle
-from app.scrapers.api_worker import ApiIngestionWorker
-from app.services.curator_service import AICuratorService
-from app.services.email_service import EmailNotificationService
+logging.info("📢 DIAGNOSTIC START: Initializing Self-Contained Test Engine...")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Read Environment Variables
+db_url = os.getenv("DATABASE_URL")
+resend_key = os.getenv("RESEND_API_KEY")
+target_email = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
 
-TECH_DOMAINS = ["Large Language Models", "System Design Architecture", "Cloud Infrastructure"]
-MY_INBOX = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
+logging.info(f"🔑 Env Verify - DATABASE_URL Present: {bool(db_url)}")
+logging.info(f"🔑 Env Verify - RESEND_API_KEY Present: {bool(resend_key)}")
+logging.info(f"🔑 Env Verify - Destination Address: {target_email}")
 
-async def run_v2_streaming_pipeline():
-    logging.info("Initializing schemas on Neon cloud platform...")
-    init_db()
+if not db_url or not resend_key:
+    logging.error("❌ CRITICAL: Missing vital cloud environment secrets. Stopping test loop.")
+    sys.exit(1)
+
+# Configure Minimal Schema Layer to match your table names
+Base = declarative_base()
+
+class ScrapedArticle(Base):
+    __tablename__ = 'scraped_articles'
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    url = Column(String)
+
+class CuratedArticle(Base):
+    __tablename__ = 'curated_articles'
+    id = Column(Integer, primary_key=True)
+    scraped_article_id = Column(Integer, ForeignKey('scraped_articles.id'))
+    summary = Column(Text)
+    justification = Column(Text)
+
+try:
+    logging.info("Connecting to Neon Cloud Infrastructure...")
+    engine = create_engine(db_url, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+    session = Session()
     
-    db = SessionLocal()
-    curator = AICuratorService()
-    mailer = EmailNotificationService()
+    logging.info("Querying records from cloud tables...")
+    results = (
+        session.query(ScrapedArticle, CuratedArticle)
+        .join(CuratedArticle, ScrapedArticle.id == CuratedArticle.scraped_article_id)
+        .all()
+    )
     
-    news_key = os.getenv("NEWS_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    resend_key = os.getenv("RESEND_API_KEY")
+    logging.info(f"📊 Neon Query Success: Found total of {len(results)} rows.")
     
-    logging.info(f"🔑 Diagnostic - NEWS_API_KEY: {'FOUND' if news_key else 'MISSING'}")
-    logging.info(f"🔑 Diagnostic - GEMINI_API_KEY: {'FOUND' if gemini_key else 'MISSING'}")
-    logging.info(f"🔑 Diagnostic - RESEND_API_KEY: {'FOUND' if resend_key else 'MISSING'}")
+    # Build HTML list
+    html_items = ""
+    if results:
+        for scraped, curated in results[:5]:
+            html_items += f"<li><b>{scraped.title}</b><br/>{curated.summary}</li>"
+    else:
+        html_items = "<li>No elements found in table cache rows yet. This is a baseline transmission test!</li>"
+
+except Exception as db_err:
+    logging.error(f"❌ DATABASE FAILURE: Failed to communicate with Neon pool: {str(db_err)}")
+    sys.exit(1)
+
+# Dispatch Layer Verification
+try:
+    logging.info("Initializing Resend gateway configuration...")
+    resend.api_key = resend_key
     
-    if not news_key:
-        logging.error("❌ Exiting: Missing API structural auth tokens.")
-        db.close()
-        return
-
-    all_extracted_items = []
-    logging.info("Connecting to live streaming API targets...")
-    api_extractor = ApiIngestionWorker()
-    async with httpx.AsyncClient() as client:
-        tasks = [api_extractor.query_keyword_stream_async(client, domain, limit=3) for domain in TECH_DOMAINS]
-        results = await asyncio.gather(*tasks)
-        for batch in results:
-            all_extracted_items.extend(batch)
-
-    new_or_modified_article_ids = []
-    current_utc_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    email_body = f"""
+    <html>
+        <body>
+            <h2>🚀 Pipeline Diagnostic Verification Pass</h2>
+            <p>Connection from GitHub Action runner to Neon completed smoothly.</p>
+            <ul>{html_items}</ul>
+            <hr/>
+            <small>Timestamp: {datetime.now().isoformat()}</small>
+        </body>
+    </html>
+    """
     
-    for item in all_extracted_items:
-        stmt = insert(ScrapedArticle).values(
-            source_id=item.source_id,
-            article_id=item.article_id,
-            title=item.title,
-            url=item.url,
-            raw_content=item.raw_content,
-            category=item.source_id,
-            published_at=item.published_at.replace(tzinfo=None),
-            created_at=current_utc_time,
-            updated_at=current_utc_time
-        )
-        
-        upsert_stmt = stmt.on_conflict_do_update(
-            index_elements=['article_id'],
-            set_={
-                'raw_content': stmt.excluded.raw_content,
-                'title': stmt.excluded.title,
-                'updated_at': current_utc_time
-            }
-        )
-        
-        try:
-            db.execute(upsert_stmt)
-            db.commit()
-            
-            record = db.query(ScrapedArticle).filter(ScrapedArticle.article_id == item.article_id).first()
-            already_curated = db.query(CuratedArticle).filter(CuratedArticle.scraped_article_id == record.id).first()
-            
-            if not already_curated:
-                new_or_modified_article_ids.append(record.id)
-        except Exception as db_err:
-            db.rollback()
-            continue
+    logging.info(f"Submitting payload transit request to onboarding@resend.dev -> {target_email}...")
+    response = resend.Emails.send({
+        "from": "onboarding@resend.dev",
+        "to": target_email,
+        "subject": "🚀 Technical Pipeline Connection Verification",
+        "html": email_body
+    })
+    logging.info(f"🎉 API SUCCESS! Resend accepted transit. ID reference token: {response}")
 
-    logging.info(f"📊 Filter Result: {len(new_or_modified_article_ids)} new elements.")
+except Exception as mail_err:
+    logging.error(f"❌ MAILER GATEWAY REJECTION: Resend refused or blocked request: {str(mail_err)}")
 
-    if new_or_modified_article_ids and gemini_key:
-        for article_id in new_or_modified_article_ids:
-            await asyncio.sleep(12)
-            article = db.query(ScrapedArticle).filter(ScrapedArticle.id == article_id).first()
-            try:
-                analysis = curator.analyze_content(article.title, article.raw_content)
-                tech_stack_str = ", ".join(analysis.tech_stack) if analysis.tech_stack else "None"
-                
-                db.add(CuratedArticle(
-                    scraped_article_id=article.id,
-                    summary=analysis.summary,
-                    tech_stack=tech_stack_str,
-                    impact_score=analysis.impact_score,
-                    justification=analysis.justification,
-                    created_at=current_utc_time
-                ))
-                db.commit()
-            except Exception:
-                db.rollback()
-                continue
-
-    if resend_key:
-        try:
-            logging.info("Force Triggering Email dispatch function...")
-            mailer.send_daily_briefing(recipient_email=MY_INBOX)
-        except Exception as err:
-            logging.error(f"Mailer call crashed: {err}")
-
-    db.close()
-    logging.info("Execution sequence wrapped cleanly.")
+finally:
+    session.close()
+    logging.info("📢 DIAGNOSTIC COMPLETE: Engine wrapping up cleanly.")
