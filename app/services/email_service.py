@@ -13,7 +13,7 @@ class EmailNotificationService:
     def send_daily_briefing(self, recipient_email: str):
         db = SessionLocal()
         
-        # DEBUG EXPANSION: Look back 7 days instead of 24 hours to capture your initial setup run
+        # Look back 7 days to capture your previous data runs
         time_threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
         
         results = (
@@ -25,7 +25,7 @@ class EmailNotificationService:
         )
         
         if not results:
-            logging.info("Email service aborting: No curated records found in database window.")
+            logging.warning("⚠️ Email service aborted: Zero curated matching records found in Neon history.")
             db.close()
             return
 
@@ -109,8 +109,8 @@ class EmailNotificationService:
                 "subject": f"🎯 Engineering Briefing: Categorized Technical Deltas",
                 "html": full_email_payload
             })
-            logging.info(f"Cleaned Category Grouped Newsletter successfully sent to {recipient_email}")
+            logging.info(f"🚀 SUCCESS: Newsletter sent out to {recipient_email}")
         except Exception as mail_err:
-            logging.error(f"Resend transaction failed: {str(mail_err)}")
+            logging.error(f"❌ Resend delivery failure: {str(mail_err)}")
             
         db.close()
