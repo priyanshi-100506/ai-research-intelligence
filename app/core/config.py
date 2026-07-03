@@ -1,4 +1,9 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+﻿from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+import os
+
+# Load .env file explicitly
+load_dotenv()
 
 class Settings(BaseSettings):
     DATABASE_URL: str
@@ -7,9 +12,6 @@ class Settings(BaseSettings):
     NEWS_API_KEY: str
     RECIPIENT_EMAIL: str
 
-    model_config = SettingsConfigDict(
-        env_file=r'C:\Users\USER\Documents\ai-news-aggregator\.env',
-        extra='ignore'
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
 settings = Settings()

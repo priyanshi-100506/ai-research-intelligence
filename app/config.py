@@ -1,14 +1,18 @@
-import os
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
-# Load environment variables from the .env file explicitly
+# Ensure the .env file is loaded
 load_dotenv()
 
-class Settings:
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", 
-        "postgresql://postgres:postgres@localhost:5432/ai_news"
-    )
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+class Settings(BaseSettings):
+    DATABASE_URL: str
+    GEMINI_API_KEY: str
+    RESEND_API_KEY: str
+    NEWS_API_KEY: str
+    RECIPIENT_EMAIL: str
 
+    # This maps the environment variables to the class attributes
+    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
+
+# Initialize settings
 settings = Settings()
