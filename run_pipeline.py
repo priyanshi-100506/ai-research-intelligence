@@ -11,13 +11,12 @@ from sqlalchemy.dialects.postgresql import insert
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 
-# Production Keyword Streams
 TECH_DOMAINS = ["Large Language Models", "System Design Architecture", "Cloud Infrastructure"]
 MY_INBOX = os.getenv("RECIPIENT_EMAIL", "priyanshicshah@gmail.com")
 
 db_url = os.getenv("DATABASE_URL")
 resend_key = os.getenv("RESEND_API_KEY")
-currents_key = os.getenv("NEWS_API_KEY") # Reads your fresh real-time token seamlessly
+currents_key = os.getenv("NEWS_API_KEY")
 
 if not all([db_url, resend_key, currents_key]):
     logging.error("❌ Production Secrets Missing in running context environment!")
@@ -28,14 +27,15 @@ Base = declarative_base()
 class ScrapedArticle(Base):
     __tablename__ = 'scraped_articles'
     id = Column(Integer, primary_key=True)
+    source_id = Column(String, nullable=False) # Satisfies your existing column rule
     article_id = Column(String, unique=True)
     title = Column(String)
     url = Column(String)
     raw_content = Column(Text)
+    category = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 async def fetch_realtime_news(client, keyword, api_key):
-    # Switches query structure to hit Currents API's real-time extraction pipeline
     url = "https://api.currentsapi.services/v1/search"
     params = {
         "keywords": keyword,
@@ -46,10 +46,10 @@ async def fetch_realtime_news(client, keyword, api_key):
         res = await client.get(url, params=params)
         if res.status_code == 200:
             data = res.json()
-            return data.get("news", [])
+            return keyword, data.get("news", [])
     except Exception as e:
         logging.error(f"Error scraping {keyword} from real-time stream: {e}")
-    return []
+    return keyword, []
 
 async def main():
     logging.info("Checking Currents API for live breaking technical deltas...")
@@ -63,8 +63,11 @@ async def main():
     async with httpx.AsyncClient() as client:
         tasks = [fetch_realtime_news(client, kw, currents_key) for kw in TECH_DOMAINS]
         results = await asyncio.gather(*tasks)
-        for batch in results:
-            if batch: all_articles.extend(batch)
+        for keyword, batch in results:
+            if batch:
+                for item in batch:
+                    item["_search_category"] = keyword
+                    all_articles.extend(batch)
 
     new_article_deltas = []
     current_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -73,20 +76,28 @@ async def main():
         uid = art.get("url")
         if not uid: continue
         
+        # FIX: Explicitly supply source_id and category fields to satisfy the schema constraints
         stmt = insert(ScrapedArticle).values(
+            source_id="CurrentsAPI",
             article_id=uid,
             title=art.get("title", "Breaking Architecture Alert"),
             url=uid,
             raw_content=art.get("description", "No raw context summary supplied."),
+            category=art.get("_search_category", "General Tech"),
             created_at=current_time
         )
         
         upsert_stmt = stmt.on_conflict_do_nothing(index_elements=['article_id'])
-        res = session.execute(upsert_stmt)
-        session.commit()
         
-        if res.rowcount > 0:
-            new_article_deltas.append(art)
+        try:
+            res = session.execute(upsert_stmt)
+            session.commit()
+            if res.rowcount > 0:
+                new_article_deltas.append(art)
+        except Exception as err:
+            session.rollback()
+            logging.error(f"Failed handling record entry database row write: {err}")
+            continue
 
     logging.info(f"📊 Real-Time Delta Check: Identified {len(new_article_deltas)} brand new breaking entries.")
 
@@ -95,7 +106,6 @@ async def main():
         resend.api_key = resend_key
         
         html_items = ""
-        # Take the top 3 high-signal newly dropped articles to list in the notification email
         for art in new_article_deltas[:3]:
             html_items += f"""
             <div style='margin-bottom: 20px; padding: 15px; background: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 4px;'>
