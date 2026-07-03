@@ -27,12 +27,11 @@ Base = declarative_base()
 class ScrapedArticle(Base):
     __tablename__ = 'scraped_articles'
     id = Column(Integer, primary_key=True)
-    source_id = Column(String, nullable=False) # Satisfies your existing column rule
+    source_id = Column(String, nullable=False)
     article_id = Column(String, unique=True)
     title = Column(String)
     url = Column(String)
     raw_content = Column(Text)
-    category = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 async def fetch_realtime_news(client, keyword, api_key):
@@ -46,10 +45,10 @@ async def fetch_realtime_news(client, keyword, api_key):
         res = await client.get(url, params=params)
         if res.status_code == 200:
             data = res.json()
-            return keyword, data.get("news", [])
+            return data.get("news", [])
     except Exception as e:
         logging.error(f"Error scraping {keyword} from real-time stream: {e}")
-    return keyword, []
+    return []
 
 async def main():
     logging.info("Checking Currents API for live breaking technical deltas...")
@@ -63,11 +62,9 @@ async def main():
     async with httpx.AsyncClient() as client:
         tasks = [fetch_realtime_news(client, kw, currents_key) for kw in TECH_DOMAINS]
         results = await asyncio.gather(*tasks)
-        for keyword, batch in results:
+        for batch in results:
             if batch:
-                for item in batch:
-                    item["_search_category"] = keyword
-                    all_articles.extend(batch)
+                all_articles.extend(batch)
 
     new_article_deltas = []
     current_time = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -76,14 +73,13 @@ async def main():
         uid = art.get("url")
         if not uid: continue
         
-        # FIX: Explicitly supply source_id and category fields to satisfy the schema constraints
+        # REMOVED 'category': Only write the structural columns known to be in your Neon database schema
         stmt = insert(ScrapedArticle).values(
             source_id="CurrentsAPI",
             article_id=uid,
             title=art.get("title", "Breaking Architecture Alert"),
             url=uid,
             raw_content=art.get("description", "No raw context summary supplied."),
-            category=art.get("_search_category", "General Tech"),
             created_at=current_time
         )
         
@@ -96,7 +92,6 @@ async def main():
                 new_article_deltas.append(art)
         except Exception as err:
             session.rollback()
-            logging.error(f"Failed handling record entry database row write: {err}")
             continue
 
     logging.info(f"📊 Real-Time Delta Check: Identified {len(new_article_deltas)} brand new breaking entries.")
@@ -106,13 +101,21 @@ async def main():
         resend.api_key = resend_key
         
         html_items = ""
-        for art in new_article_deltas[:3]:
+        # Remove duplicate records matching on same URL blocks
+        seen_urls = set()
+        for art in new_article_deltas:
+            url = art.get("url")
+            if url in seen_urls: continue
+            seen_urls.add(url)
+            
             html_items += f"""
             <div style='margin-bottom: 20px; padding: 15px; background: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 4px;'>
-                <h4 style='margin:0 0 5px 0;'><a href='{art.get("url")}' style='color:#1e293b; text-decoration:none; font-weight:bold;'>{art.get("title")}</a></h4>
+                <h4 style='margin:0 0 5px 0;'><a href='{url}' style='color:#1e293b; text-decoration:none; font-weight:bold;'>{art.get("title")}</a></h4>
                 <p style='color:#475569; font-size:13px; margin:0;'>{art.get("description")}</p>
             </div>
             """
+            if len(seen_urls) >= 3:
+                break
             
         email_body = f"""
         <html>
@@ -130,7 +133,7 @@ async def main():
             resend.Emails.send({
                 "from": "onboarding@resend.dev",
                 "to": MY_INBOX,
-                "subject": f"⚡ Live Technical Drop: {len(new_article_deltas)} New Technical Updates",
+                "subject": f"⚡ Live Technical Drop: New Updates Available",
                 "html": email_body
             })
             logging.info(f"🎉 Alert email successfully sent to {MY_INBOX}!")
