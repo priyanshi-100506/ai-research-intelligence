@@ -1,7 +1,7 @@
 ﻿import os
 import resend
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from app.database.models import SessionLocal, ScrapedArticle, CuratedArticle
 
@@ -12,9 +12,10 @@ class EmailNotificationService:
 
     def send_daily_briefing(self, recipient_email: str):
         db = SessionLocal()
-        time_threshold = datetime.utcnow() - timedelta(hours=24)
         
-        # 1. Fetch recent entries sorted by curation id descending so the newest curations load first
+        # DEBUG EXPANSION: Look back 7 days instead of 24 hours to capture your initial setup run
+        time_threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+        
         results = (
             db.query(ScrapedArticle, CuratedArticle)
             .join(CuratedArticle, ScrapedArticle.id == CuratedArticle.scraped_article_id)
@@ -28,16 +29,12 @@ class EmailNotificationService:
             db.close()
             return
 
-        # 2. Group items while enforcing strict structural deduplication
         section_matrix = defaultdict(list)
         processed_article_ids = set()
 
         for scraped, curated in results:
-            # DEDUPLICATION CORE GUARD: If we already parsed the newest curation for this article, skip older rows
             if scraped.id in processed_article_ids:
                 continue
-                
-            # SAFETY FILTER: Skip any leftover 429 quota traces or failed content placeholders
             if curated.impact_score <= 1 or (curated.justification and "RESOURCE_EXHAUSTED" in curated.justification):
                 continue
                 
@@ -45,7 +42,6 @@ class EmailNotificationService:
             display_category = scraped.category or "General Systems Engineering"
             section_matrix[display_category].append((scraped, curated))
 
-        # 3. Build the section-grouped HTML body script
         sections_html_buffer = ""
         for category, articles in section_matrix.items():
             if not articles:
@@ -83,7 +79,6 @@ class EmailNotificationService:
                 </div>
                 """
 
-        # 4. Master Template Synthesis
         full_email_payload = f"""
         <!DOCTYPE html>
         <html>
@@ -95,12 +90,12 @@ class EmailNotificationService:
                 </div>
                 <div style="padding: 24px; background-color: #ffffff;">
                     <p style="font-size: 13px; color: #64748b; margin-top: 0; margin-bottom: 20px;">
-                        Curated high-signal engineering updates processed across tracking channels during the last execution cycle.
+                        Curated high-signal engineering updates processed across tracking channels.
                     </p>
                     {sections_html_buffer}
                 </div>
                 <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-                    <p style="font-size: 11px; color: #94a3b8; margin: 0;">Zero-Cost Serverless Execution Grid • Powered by PostgreSQL Upsert States</p>
+                    <p style="font-size: 11px; color: #94a3b8; margin: 0;">Zero-Cost Serverless Execution Grid • Powered by Neon PostgreSQL</p>
                 </div>
             </div>
         </body>
@@ -114,7 +109,7 @@ class EmailNotificationService:
                 "subject": f"🎯 Engineering Briefing: Categorized Technical Deltas",
                 "html": full_email_payload
             })
-            logging.info(f"Cleaned category-grouped newsletter successfully sent to {recipient_email}")
+            logging.info(f"Cleaned Category Grouped Newsletter successfully sent to {recipient_email}")
         except Exception as mail_err:
             logging.error(f"Resend transaction failed: {str(mail_err)}")
             

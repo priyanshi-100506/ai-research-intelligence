@@ -30,13 +30,12 @@ async def run_v2_streaming_pipeline():
     gemini_key = os.getenv("GEMINI_API_KEY")
     resend_key = os.getenv("RESEND_API_KEY")
     
-    # Structural Diagnostics
     logging.info(f"🔑 Secret Mapping Diagnostic - NEWS_API_KEY: {'FOUND' if news_key else 'MISSING'}")
     logging.info(f"🔑 Secret Mapping Diagnostic - GEMINI_API_KEY: {'FOUND' if gemini_key else 'MISSING'}")
     logging.info(f"🔑 Secret Mapping Diagnostic - RESEND_API_KEY: {'FOUND' if resend_key else 'MISSING'}")
     
     if not news_key:
-        logging.error("❌ Aborting: NEWS_API_KEY is completely missing from running context.")
+        logging.error("❌ Aborting Ingestion Loop: NEWS_API_KEY is missing from environment context.")
         db.close()
         return
 
@@ -51,7 +50,6 @@ async def run_v2_streaming_pipeline():
 
     logging.info(f"Successfully processed {len(all_extracted_items)} entries from network stream.")
 
-    # Deduplication Step
     new_or_modified_article_ids = []
     current_utc_time = datetime.now(timezone.utc).replace(tzinfo=None)
     
@@ -92,12 +90,11 @@ async def run_v2_streaming_pipeline():
 
     logging.info(f"📊 Filter Delta: Found {len(new_or_modified_article_ids)} new uncurated articles.")
 
-    # Curation Execution Loop
     if new_or_modified_article_ids and gemini_key:
         logging.info(f"🚀 Processing {len(new_or_modified_article_ids)} items through Gemini...")
         for index, article_id in enumerate(new_or_modified_article_ids):
             if index > 0:
-                await asyncio.sleep(12.5) # Protect against Gemini API rate limits
+                await asyncio.sleep(12.5)
                 
             article = db.query(ScrapedArticle).filter(ScrapedArticle.id == article_id).first()
             try:
@@ -118,16 +115,14 @@ async def run_v2_streaming_pipeline():
                 db.rollback()
                 err_msg = str(ai_err)
                 if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
-                    logging.warning("⚠️ Gemini rate limit reached. Saving progress and exiting loop.")
+                    logging.warning("⚠️ Gemini rate limit reached. Exiting curation loop gracefully.")
                     break
                 continue
-    elif not gemini_key:
-        logging.warning("⚠️ Skipping Curation Loop: GEMINI_API_KEY environment variable is missing.")
 
-    # Email Generation & Delivery Step
-    if resend_key and resend_key != "YOUR_RESEND_KEY":
+    # FORCE DISPATCH PASS: Sends out the briefing template using whatever histories exist in your Neon table
+    if resend_key:
         try:
-            logging.info("Building and dispatching HTML digest...")
+            logging.info("Force Ingestion Build: Packing HTML digest from stored Neon data...")
             mailer.send_daily_briefing(recipient_email=MY_INBOX)
         except Exception as dispatch_error:
             logging.error(f"Newsletter delivery failed: {str(dispatch_error)}")
@@ -136,6 +131,3 @@ async def run_v2_streaming_pipeline():
 
     db.close()
     logging.info("Pipeline sync closed successfully.")
-
-if __name__ == "__main__":
-    asyncio.run(run_v2_streaming_pipeline())
