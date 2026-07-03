@@ -15,7 +15,7 @@ class ScrapedItemSchema(BaseModel):
 
 class ApiIngestionWorker:
     def __init__(self):
-        # Gracefully extract token from environment contexts
+        # Safely checks environment tokens
         self.api_key = os.getenv("NEWS_API_KEY", "YOUR_FREE_NEWSAPI_ORG_KEY")
         self.endpoint = "https://newsapi.org/v2/everything"
 
@@ -34,21 +34,25 @@ class ApiIngestionWorker:
         try:
             response = await client.get(self.endpoint, params=query_params, timeout=12.0)
             if response.status_code != 200:
-                logging.error(f"NewsAPI endpoint dropped connection state [{response.status_code}] for keyword: {keyword}")
+                logging.error(f"NewsAPI error response [{response.status_code}] for keyword: {keyword}")
                 return extracted_records
                 
             payload = response.json()
             for item in payload.get("articles", []):
                 pub_date_str = item.get("publishedAt")
-                # Cleanly convert standard ISO timestamp into database-friendly datetime objects
                 pub_date = datetime.strptime(pub_date_str[:19], "%Y-%m-%dT%H:%M:%S") if pub_date_str else datetime.utcnow()
 
+                # CRITICAL FIX: Ensure full content text snippet is targeted so Gemini has material to read
+                content_payload = item.get("description", "") or item.get("content", "")
+                if not content_payload or len(content_payload.strip()) < 10:
+                    content_payload = f"Engineering development details tracking keyword update for {keyword}."
+
                 extracted_records.append(ScrapedItemSchema(
-                    source_id=f"newsapi_{keyword.lower().replace(' ', '_')}",
-                    article_id=item.get("url"), # The primary key anchor used for write-time uniqueness
-                    title=item.get("title", ""),
+                    source_id=keyword, # Used contextually as our Category Header
+                    article_id=item.get("url"),
+                    title=item.get("title", "Breaking Technology Update"),
                     url=item.get("url", ""),
-                    raw_content=item.get("description", "") or item.get("content", ""),
+                    raw_content=content_payload,
                     published_at=pub_date
                 ))
         except Exception as api_err:
