@@ -1,26 +1,26 @@
-﻿# AI Industry Briefing Pipeline
+﻿# AI Research Intelligence Platform
 
-An automated AI-powered data engineering pipeline that collects engineering news, validates LLM-generated insights, and delivers a structured executive briefing directly to email.
+An AI-powered research intelligence platform that automatically ingests recent AI research papers, generates structured insights using an LLM, validates every response with strict schemas, and serves curated research through a FastAPI dashboard and REST API.
 
 ---
 
 ## Why I Built This
 
-Keeping up with engineering blogs, AI announcements, and technical videos every day became increasingly difficult.
+The volume of AI research published every day makes it difficult to stay updated with the latest developments across Natural Language Processing, Computer Vision, Robotics, and other domains.
 
-Instead of manually filtering dozens of sources, I built an automated pipeline that continuously ingests content, stores only new information, summarizes it using an LLM, validates every response through strict schemas, and generates a daily HTML briefing.
+Instead of manually browsing research repositories, I built an automated backend pipeline that continuously ingests research papers, stores only new entries, generates structured AI summaries, validates every response using strict schemas, and exposes the curated results through a web dashboard and API.
 
-The goal of this project was not simply to use an LLM—it was to engineer a reliable service around one.
+The objective of this project was not simply to integrate an LLM, but to engineer a reliable backend system around one.
 
 ---
 
 ## Architecture
 
-GitHub Actions (Scheduler)
+FastAPI Backend
 
 ↓
 
-Ingestion Layer
+Research Ingestion (arXiv)
 
 ↓
 
@@ -36,36 +36,38 @@ Pydantic Schema Validation
 
 ↓
 
-HTML Report Generation
-
-↓
-
-Email Delivery (Resend)
+REST API & Dashboard
 
 ---
 
 ## Features
 
-- Automated scheduled execution using GitHub Actions
-- PostgreSQL-backed state management
-- Duplicate detection before AI processing
-- Structured LLM outputs with Pydantic
-- Responsive HTML email generation
-- Production-oriented project structure
-- Unit testing with pytest
+* Automated research paper ingestion from arXiv
+* PostgreSQL-backed persistent storage
+* Duplicate detection before AI processing
+* AI-powered research summarization using Gemini 2.5 Flash
+* Structured LLM output validation using Pydantic v2
+* Asynchronous database operations with SQLAlchemy and AsyncPG
+* Category-based research organization
+* FastAPI REST API with interactive documentation
+* Dockerized development environment
+* Modular, production-inspired project architecture
 
 ---
 
 ## Tech Stack
 
-- Python
-- PostgreSQL
-- SQLAlchemy
-- Pydantic v2
-- Gemini 2.5 Flash
-- GitHub Actions
-- Resend
-- pytest
+* Python 3.13
+* FastAPI
+* PostgreSQL (Neon)
+* SQLAlchemy 2.0
+* AsyncPG
+* Pydantic v2
+* Google Gemini 2.5 Flash
+* Docker & Docker Compose
+* Jinja2
+* Tailwind CSS
+* uv
 
 ---
 
@@ -73,11 +75,24 @@ Email Delivery (Resend)
 
 Additional engineering documentation is available inside the **docs/** folder.
 
-- Architecture
-- Engineering Decisions
-- Interview Notes
-- Future Improvements
+* System Architecture
+* Engineering Decisions
+* Future Roadmap
+* Project Design Notes
 
 ---
 
-Built by Priyanshi Chirag Shah
+## Roadmap
+
+* React + Vite frontend
+* Advanced search and filtering
+* Improved deduplication pipeline
+* Structured logging and monitoring
+* Automated scheduling
+* Real-time dashboard updates
+* User authentication
+* Personalized research feeds
+
+---
+
+Built by **Priyanshi Shah**
