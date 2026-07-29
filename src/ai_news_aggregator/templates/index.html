@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Research Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <script>
+        const eventSource = new EventSource("/stream");
+        eventSource.addEventListener("new_article", (event) => {
+            const data = JSON.parse(event.data);
+            const grid = document.querySelector('.grid');
+            if (!grid) return; // empty-state case has no grid yet
+            const card = document.createElement('article');
+
+            card.className = "bg-slate-800 rounded-2xl border border-slate-700 p-8 hover:border-blue-500 transition-all duration-300 flex flex-col";
+
+            const tags = (data.tech_stack || '')
+                .split(',')
+                .map(t => t.trim())
+                .filter(Boolean);
+
+            let scoreBadgeColor = "bg-slate-600/50 text-slate-300";
+            if (data.impact_score >= 8) scoreBadgeColor = "bg-emerald-500/20 text-emerald-400";
+            else if (data.impact_score >= 6) scoreBadgeColor = "bg-amber-500/20 text-amber-400";
+
+            card.innerHTML = `
+                <div class="flex justify-between items-start gap-4">
+                    <h2 class="text-xl font-bold leading-tight text-white">${data.title}</h2>
+                    <span class="shrink-0 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${scoreBadgeColor}">
+                        Impact: ${data.impact_score}
+                    </span>
+                </div>
+                ${data.category ? `<p class="text-sm text-indigo-400 mt-1">Category: ${data.category}</p>` : ''}
+                ${tags.length > 0 ? `
+                <div class="mt-4 flex flex-wrap gap-2">
+                    ${tags.map(t => `<span class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-xs font-mono">${t}</span>`).join('')}
+                </div>` : ''}
+                <p class="mt-6 text-slate-300 leading-relaxed">${data.summary}</p>
+                ${data.justification ? `<p class="mt-4 text-sm text-slate-500 italic border-l-2 border-slate-700 pl-3">${data.justification}</p>` : ''}
+                <div class="mt-6 pt-4 border-t border-slate-700 flex items-center justify-between">
+                    <a href="${data.url}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-medium text-sm transition-colors">Read Paper →</a>
+                    <span class="text-xs text-slate-500">${new Date().toISOString().split('T')[0]}</span>
+                </div>
+            `;
+            grid.prepend(card);
+        });
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div class="max-w-6xl mx-auto py-12 px-6">
+        <header class="mb-12">
+            <h1 class="text-4xl font-extrabold text-white mb-2">Research Intelligence</h1>
+            <p class="text-slate-400">Curated AI insights, ranked by impact.</p>
+        </header>
+
+        <!-- CATEGORY TABS -->
+        <div class="tabs mb-8 flex gap-4">
+            {% for cat in ['All', 'NLP', 'Robotics', 'Vision'] %}
+            <a href="/?category={{ cat }}"
+               class="px-4 py-2 rounded transition {{ 'bg-indigo-600 text-white' if current_category == cat else 'bg-slate-800 text-slate-300 hover:bg-slate-700' }}">
+               {{ cat }}
+            </a>
+            {% endfor %}
+        </div>
+
+        {% if articles %}
+        <div class="grid gap-6 lg:grid-cols-2">
+            {% for curated, scraped in articles %}
+            <article class="bg-slate-800 rounded-2xl border border-slate-700 p-8 hover:border-blue-500 transition-all duration-300 flex flex-col">
+                <div class="flex justify-between items-start gap-4">
+                    <h2 class="text-xl font-bold leading-tight text-white">{{ scraped.title }}</h2>
+                    {% if curated.impact_score is not none %}
+                    <span class="shrink-0 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider
+                        {% if curated.impact_score >= 8 %} bg-emerald-500/20 text-emerald-400
+                        {% elif curated.impact_score >= 6 %} bg-amber-500/20 text-amber-400
+                        {% else %} bg-slate-600/50 text-slate-300 {% endif %}">
+                        Impact: {{ curated.impact_score }}
+                    </span>
+                    {% endif %}
+                </div>
+
+                {% if curated.category %}
+                <p class="text-sm text-indigo-400 mt-1">Category: {{ curated.category }}</p>
+                {% endif %}
+
+                {% if curated.tech_stack %}
+                <div class="mt-4 flex flex-wrap gap-2">
+                    {% for tech in curated.tech_stack.split(',') %}
+                    <span class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-xs font-mono">{{ tech.strip() }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if curated.summary %}
+                <p class="mt-6 text-slate-300 leading-relaxed">{{ curated.summary }}</p>
+                {% endif %}
+
+                {% if curated.justification %}
+                <p class="mt-4 text-sm text-slate-500 italic border-l-2 border-slate-700 pl-3">{{ curated.justification }}</p>
+                {% endif %}
+
+                <div class="mt-6 pt-4 border-t border-slate-700 flex items-center justify-between">
+                    {% if scraped.url %}
+                    <a href="{{ scraped.url }}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 font-medium text-sm transition-colors">Read Paper →</a>
+                    {% else %}
+                    <span></span>
+                    {% endif %}
+                    {% if scraped.published_at %}
+                    <span class="text-xs text-slate-500">{{ scraped.published_at.strftime('%Y-%m-%d') }}</span>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-24 border border-dashed border-slate-700 rounded-2xl">
+            <p class="text-slate-500">No articles found in this category.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

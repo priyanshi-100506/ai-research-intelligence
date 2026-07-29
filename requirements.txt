@@ -1,8 +1,0 @@
-﻿sqlalchemy
-psycopg2-binary
-pydantic
-pydantic-settings
-python-dotenv
-httpx
-resend
-pytest

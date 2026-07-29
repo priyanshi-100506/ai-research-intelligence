@@ -1,0 +1,1 @@
+from ai_news_aggregator.database.models import ScrapedArticle, SessionLocal; db = SessionLocal(); articles = db.query(ScrapedArticle).all(); [print(f'ID: {a.id} | Title: {a.title}') for a in articles]

@@ -23,14 +23,23 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8 pb-4 border-b border-slate-800">
-            <div>
-                <h2 class="text-2xl font-semibold text-white">Curated Technical Insights</h2>
-                <p class="text-slate-400 text-sm mt-1">Showing real-time processed stream metrics from PostgreSQL container infrastructure.</p>
+        <div class="flex flex-col gap-4 mb-8 pb-4 border-b border-slate-800">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold text-white">Curated Technical Insights</h2>
+                    <p class="text-slate-400 text-sm mt-1">Showing real-time processed stream metrics from PostgreSQL container infrastructure.</p>
+                </div>
+                <div class="mt-4 md:mt-0 flex space-x-3">
+                    <button onclick="setMinScore(1, this)" id="btn-all-score" class="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 score-btn transition">All Feed Streams</button>
+                    <button onclick="setMinScore(7, this)" id="btn-high" class="px-4 py-2 text-sm font-medium rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 score-btn transition">High Impact Only (7+)</button>
+                </div>
             </div>
-            <div class="mt-4 md:mt-0 flex space-x-3">
-                <button onclick="fetchArticles(1)" id="btn-all" class="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 dynamic-btn transition">All Feed Streams</button>
-                <button onclick="fetchArticles(7)" id="btn-high" class="px-4 py-2 text-sm font-medium rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 dynamic-btn transition">High Impact Only (7+)</button>
+
+            <div class="flex space-x-2 bg-slate-900 p-1 rounded-lg border border-slate-800 self-start">
+                <button onclick="setCategory('', this)" id="btn-all" class="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm category-btn transition">All</button>
+                <button onclick="setCategory('Robotics', this)" id="btn-robotics" class="px-4 py-2 text-sm font-medium rounded-md text-slate-400 hover:text-white category-btn transition">Robotics</button>
+                <button onclick="setCategory('NLP', this)" id="btn-nlp" class="px-4 py-2 text-sm font-medium rounded-md text-slate-400 hover:text-white category-btn transition">NLP</button>
+                <button onclick="setCategory('Vision', this)" id="btn-vision" class="px-4 py-2 text-sm font-medium rounded-md text-slate-400 hover:text-white category-btn transition">Vision</button>
             </div>
         </div>
 
@@ -42,34 +51,50 @@
     <script>
         const API_BASE = "http://127.0.0.1:8000/api";
 
-        async function fetchArticles(minScore = 1) {
-            // Reset and update active button styles dynamically
-            document.querySelectorAll('.dynamic-btn').forEach(btn => {
-                btn.className = "px-4 py-2 text-sm font-medium rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 dynamic-btn transition";
-            });
-            if (minScore === 7) {
-                document.getElementById('btn-high').className = "px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm dynamic-btn transition";
-            } else {
-                document.getElementById('btn-all').className = "px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm dynamic-btn transition";
-            }
+        let currentMinScore = 1;
+        let currentCategory = '';
 
+        function setMinScore(minScore, btnEl) {
+            currentMinScore = minScore;
+            document.querySelectorAll('.score-btn').forEach(btn => {
+                btn.className = "px-4 py-2 text-sm font-medium rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700 score-btn transition";
+            });
+            btnEl.className = "px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm score-btn transition";
+            fetchArticles();
+        }
+
+        function setCategory(category, btnEl) {
+            currentCategory = category;
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.className = "px-4 py-2 text-sm font-medium rounded-md text-slate-400 hover:text-white category-btn transition";
+            });
+            btnEl.className = "px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 text-white shadow-sm category-btn transition";
+            fetchArticles();
+        }
+
+        async function fetchArticles() {
             const container = document.getElementById('articles-container');
+            container.innerHTML = '<div class="col-span-full text-center py-12 text-slate-500">Syncing stream...</div>';
+
             try {
-                const response = await fetch(`${API_BASE}/articles?min_score=${minScore}`);
+                const response = await fetch(`${API_BASE}/articles?min_score=${currentMinScore}&category=${encodeURIComponent(currentCategory)}`);
                 const articles = await response.json();
 
                 if (articles.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12 text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                            No articles found matching this importance filter.
+                            No articles found matching this filter.
                         </div>`;
                     return;
                 }
 
                 container.innerHTML = articles.map(art => {
                     // Extract technical stack string items into clean arrays
-                    const tags = art.tech_stack.split(',').map(t => t.trim()).filter(t => t.length > 0 && t !== 'None');
-                    
+                    const tags = (art.tech_stack || '')
+                        .split(',')
+                        .map(t => t.trim())
+                        .filter(t => t.length > 0 && t !== 'None');
+
                     // Determine score-based styling metrics
                     let scoreBadgeColor = "bg-slate-800 text-slate-400 border-slate-700";
                     if (art.impact_score >= 8) scoreBadgeColor = "bg-rose-500/10 text-rose-400 border-rose-500/20";
@@ -116,7 +141,7 @@
         }
 
         // Initialize dashboard fetch on page load
-        fetchArticles(1);
+        fetchArticles();
     </script>
 </body>
 </html>

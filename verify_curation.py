@@ -1,0 +1,1 @@
+from ai_news_aggregator.database.models import ScrapedArticle, CuratedArticle, SessionLocal; db = SessionLocal(); curations = db.query(CuratedArticle).all(); [print(f'Summary: {c.summary[:100]}...') for c in curations]
