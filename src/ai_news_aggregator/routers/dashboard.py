@@ -29,10 +29,11 @@ async def index(
     result = await db.execute(stmt)
     articles = result.all()
     
+    # ✅ Fixed TemplateResponse signature using explicit keyword arguments
     return templates.TemplateResponse(
-        "index.html", 
-        {
-            "request": request, 
+        request=request,
+        name="index.html", 
+        context={
             "articles": articles, 
             "current_category": category
         }
@@ -41,7 +42,7 @@ async def index(
 @router.post("/trigger-pipeline", status_code=202)
 async def trigger_pipeline(
     background_tasks: BackgroundTasks, 
-    model: str = Query("gemini-3.1-flash-lite")
+    model: str = Query("gemini-2.5-flash")
 ):
     pipeline = PipelineService(model_name=model)
     background_tasks.add_task(pipeline.run_pipeline)

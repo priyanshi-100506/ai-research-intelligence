@@ -20,6 +20,8 @@ dependencies = [
     "starlette<2.0.0",
     "aiosqlite>=0.22.1",
     "asyncpg>=0.31.0",
+    "apscheduler>=3.11.3",
+    "slowapi>=0.1.9",
 ]
 
 [build-system]

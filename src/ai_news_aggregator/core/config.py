@@ -6,11 +6,11 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str
     NEWS_API_KEY: str
     RECIPIENT_EMAIL: str
-    
-    # This allows Pydantic to ignore any extra keys in .env
+
     model_config = SettingsConfigDict(
-        env_file=".env", 
-        extra="ignore"  # This is the key change!
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
     )
 
 settings = Settings()

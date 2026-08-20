@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class PipelineService:
-    def __init__(self, model_name: str = "gemini-3.1-flash-lite"):
+    def __init__(self, model_name: str = "gemini-2.5-flash"):
         self.model_name = model_name
 
     async def run_pipeline(self):
@@ -33,6 +33,7 @@ class PipelineService:
                 logger.info(f"Deduplication: Skipped {skipped_count} duplicates. Processing {len(new_papers)} new.")
                 
                 if not new_papers:
+                    logger.info("No new papers to process.")
                     return
 
                 # 3. Process each new paper
@@ -43,25 +44,32 @@ class PipelineService:
                     except Exception as e:
                         logger.error(f"Curation API call failed for {paper.article_id}: {e}. Using dummy fallback.")
                         summary_data = type("Dummy", (), {
-                            "summary": "N/A", "justification": "N/A", 
-                            "tech_stack": "N/A", "impact_score": 0.0, "category": "General"
+                            "summary": "Summary unavailable due to curation failure.", 
+                            "justification": "N/A", 
+                            "tech_stack": "N/A", 
+                            "impact_score": 0.0, 
+                            "category": "General"
                         })()
 
                     # Save paper + curation atomically via Repository
                     await repo.save_article_with_curation(paper, summary_data)
 
-                    # 4. Broadcast live update as a Python dict (Broadcaster handles JSON conversion safely)
+                    # Helper to safely extract attributes whether summary_data is an object or dict
+                    get_val = lambda key, default: getattr(summary_data, key, summary_data.get(key, default) if isinstance(summary_data, dict) else default)
+
+                    # 4. Broadcast live update
                     await broadcaster.broadcast({
                         "title": paper.title,
-                        "summary": summary_data.summary,
-                        "impact_score": summary_data.impact_score,
-                        "tech_stack": summary_data.tech_stack,
-                        "category": getattr(summary_data, "category", "General"),
+                        "summary": get_val("summary", "N/A"),
+                        "impact_score": get_val("impact_score", 0.0),
+                        "tech_stack": get_val("tech_stack", "N/A"),
+                        "category": get_val("category", "General"),
+                        "justification": get_val("justification", ""),
                         "url": paper.url
                     })
                     
                     logger.info(f"Successfully curated & saved: {paper.title[:30]}...")
-                    await asyncio.sleep(1)  # Rate pacing
+                    await asyncio.sleep(1)  # Rate pacing for SSE stream
                         
             except Exception as e:
                 logger.error(f"Pipeline execution failed: {e}", exc_info=True)

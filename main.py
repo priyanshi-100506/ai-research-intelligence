@@ -1,36 +1,63 @@
-﻿import logging
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
-# Database and core imports
+from src.ai_news_aggregator.config import settings
 from src.ai_news_aggregator.database.models import Base, engine
 from src.ai_news_aggregator.routers import dashboard, api, stream
+from src.ai_news_aggregator.services.scheduler import scheduler, setup_scheduler
 
-# Configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ── Rate Limiter (shared instance imported by routers) ──────────────────────
+limiter = Limiter(key_func=get_remote_address)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database tables on startup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialized.")
+
+    setup_scheduler()
+    scheduler.start()
+    logger.info("APScheduler initialized & started.")
+
     yield
-    # Dispose connection pool on shutdown
+
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("APScheduler shutdown.")
     await engine.dispose()
     logger.info("Database connection disposed.")
 
-app = FastAPI(title="AI Research Intelligence Platform", lifespan=lifespan)
+app = FastAPI(
+    title="Metis — AI Research Intelligence API",
+    description="FastAPI backend for the Metis AI research curation platform.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
-# Setup CORS for frontend communication
-origins = [
-    "http://localhost:5173",  # Vite default port
+# ── Rate Limiting Middleware ────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# ── CORS ────────────────────────────────────────────────────────────────────
+_base_origins = [
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:3000",  # React / Next.js default port
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
+_extra_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+origins = _base_origins + _extra_origins
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,10 +67,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Templates directory setup (if shared globally)
-templates = Jinja2Templates(directory="src/ai_news_aggregator/templates")
-
-# Register Modular Routers (No route definitions here!)
+# ── Routers ─────────────────────────────────────────────────────────────────
 app.include_router(dashboard.router)
 app.include_router(api.router)
 app.include_router(stream.router)

@@ -1,0 +1,25 @@
+services:
+  # ── Backend: FastAPI on Render ──────────────────────────────────────────
+  - type: web
+    name: metis-api
+    runtime: python
+    buildCommand: pip install uv && uv pip install gunicorn . --system
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Set in Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+      - key: RECIPIENT_EMAIL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        # Comma-separated list of frontend URLs:
+        # e.g. https://metis.vercel.app,https://your-custom-domain.com
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

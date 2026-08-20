@@ -21,8 +21,12 @@ async def message_stream(request: Request):
                 try:
                     # Non-blocking wait with 15s timeout for keep-alive ping
                     data = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield f"data: {json.dumps(data)}\n\n"
+                    
+                    # Send custom SSE event name matching frontend listener
+                    yield f"event: new_article\ndata: {json.dumps(data)}\n\n"
+                    
                 except asyncio.TimeoutError:
+                    # SSE comment line for keep-alive
                     yield ": keep-alive\n\n"
 
         except Exception as e:
