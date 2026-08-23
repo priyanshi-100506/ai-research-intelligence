@@ -56,7 +56,15 @@ _base_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
-_extra_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+_extra_origins = []
+for o in settings.ALLOWED_ORIGINS.split(","):
+    o = o.strip()
+    if o:
+        _extra_origins.append(o)
+        if o.endswith("/"):
+            _extra_origins.append(o[:-1])
+        else:
+            _extra_origins.append(o + "/")
 origins = _base_origins + _extra_origins
 
 app.add_middleware(
