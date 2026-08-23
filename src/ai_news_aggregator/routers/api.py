@@ -65,8 +65,8 @@ async def get_articles(
             "category": c.category,
             "source_id": "ArXiv",
             "published_date": (
-                s.published_date.strftime("%Y-%m-%d")
-                if hasattr(s, "published_date") and s.published_date
+                s.published_at.strftime("%Y-%m-%d")
+                if s.published_at
                 else "Recent"
             ),
         }

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -24,5 +24,5 @@ def setup_scheduler():
         id="arxiv_ingestion_job",
         replace_existing=True,
         max_instances=1,
-        next_run_time=datetime.now()  # 🚀 Run immediately on startup for testing!
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30)  # 🚀 Small delay for DB tables to init
     )

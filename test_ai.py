@@ -1,8 +1,11 @@
-from app.services.curator_service import AICuratorService
+import pytest
+import asyncio
+from src.ai_news_aggregator.services.curation_service import CurationService
 
-def test_agent():
+@pytest.mark.asyncio
+async def test_agent():
     print("Spinnin up the AI Curation agent infrastructure...")
-    curator = AICuratorService()
+    curator = CurationService()
     
     mock_title = "Building a localized RAG system with Llama 3 and ChromaDB"
     mock_content = """
@@ -12,8 +15,8 @@ def test_agent():
     compared to traditional cloud execution engines, drastically reducing production compute costs.
     """
     
-    print("Passing mock telemetry payloads to Gemini 2.5 Flash...")
-    analysis = curator.analyze_content(mock_title, mock_content)
+    print("Passing mock telemetry payloads to Gemini...")
+    analysis = await asyncio.to_thread(curator.curate, mock_content)
     
     print("\n=== AI Curation Engine Analysis Response ===")
     print(f"Summary:\n{analysis.summary}")
@@ -22,7 +25,6 @@ def test_agent():
     print(f"Justification: {analysis.justification}")
 
 if __name__ == "__main__":
-    import sys, os
-    sys.path.append(os.getcwd())
-    test_agent()
+    asyncio.run(test_agent())
+
     

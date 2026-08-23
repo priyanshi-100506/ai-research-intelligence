@@ -31,3 +31,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_news_aggregator"]
 include = ["main.py"]
+
+[tool.pytest.ini_options]
+norecursedirs = ["archive", ".venv", "node_modules"]
+python_files = ["test_*.py"]
+
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

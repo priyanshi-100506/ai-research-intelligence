@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 env_path = r"C:\Users\USER\Documents\ai-news-aggregator\.env"
 load_dotenv(dotenv_path=env_path)
 
+import pytest
+
+@pytest.mark.asyncio
 async def test_connection():
     db_url = os.getenv("DATABASE_URL")
     print(f"DEBUG: Found DATABASE_URL: {db_url}")

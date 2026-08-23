@@ -85,8 +85,8 @@ Pydantic v2 validation ← enforces structure on every LLM response
 ### 1. Clone & configure
 
 ```bash
-git clone https://github.com/priyanshi-100506/ai-research-intelligence.git
-cd ai-research-intelligence
+git clone https://github.com/priyanshi-100506/metis.git
+cd metis
 ```
 
 Create `.env` in the project root:
