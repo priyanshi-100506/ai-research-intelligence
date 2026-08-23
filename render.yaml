@@ -3,23 +3,22 @@ services:
   - type: web
     name: metis-api
     runtime: python
+    region: oregon             # us-west-2 — change to frankfurt/singapore if preferred
+    plan: free
     buildCommand: pip install uv && uv pip install gunicorn . --system
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    plan: free
     envVars:
       - key: DATABASE_URL
-        sync: false          # Set in Render dashboard
+        sync: false            # Paste your Neon postgresql+asyncpg:// URL
       - key: GEMINI_API_KEY
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: NEWS_API_KEY
-        sync: false
-      - key: RECIPIENT_EMAIL
-        sync: false
+        sync: false            # From Google AI Studio
+      - key: PIPELINE_SECRET
+        generateValue: true    # Render auto-generates a secure token for you
       - key: ALLOWED_ORIGINS
-        # Comma-separated list of frontend URLs:
-        # e.g. https://metis.vercel.app,https://your-custom-domain.com
-        sync: false
+        sync: false            # Paste your Vercel frontend URL after deploying
+      - key: RESEND_API_KEY
+        sync: false            # Optional — for email digests
+      - key: RECIPIENT_EMAIL
+        sync: false            # Optional
       - key: PYTHONUNBUFFERED
         value: "1"
