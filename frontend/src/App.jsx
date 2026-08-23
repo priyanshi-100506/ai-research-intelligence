@@ -278,7 +278,7 @@ export default function App() {
       <footer className="border-t border-journal-border py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row
                         items-center justify-between gap-2 text-[11px] text-journal-caption font-mono">
-          <span>© 2025 Metis · AI Research Intelligence</span>
+          <span>© 2026 Metis · AI Research Intelligence</span>
           <span className="flex items-center gap-1.5">
             <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-journal-olive' : 'bg-journal-muted'}`} />
             {isConnected ? 'Live stream connected' : 'Stream offline'}
