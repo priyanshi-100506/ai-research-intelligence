@@ -2,6 +2,8 @@
 
 > An automated, full-stack research platform that ingests AI papers from ArXiv, scores and summarises them with **Gemini 2.5 Flash**, and streams curations in real time to a React dashboard — engineered for reliability, not just vibes.
 
+**Live:** [metis-ashen-seven.vercel.app](https://metis-ashen-seven.vercel.app) · **API:** [metis-api-x843.onrender.com/docs](https://metis-api-x843.onrender.com/docs)
+
 ---
 
 ## Why I Built This
@@ -148,24 +150,26 @@ Invoke-WebRequest -Method Post -Uri "http://127.0.0.1:8000/api/v1/trigger-pipeli
 
 ## Deployment
 
-### Backend → Render
+### Backend → Render (Blueprint)
 
-1. Push repo to GitHub
-2. **Render** → New Web Service → connect repo → Render auto-detects `render.yaml`
-3. Set env vars in Render dashboard (`DATABASE_URL`, `GEMINI_API_KEY`, `PIPELINE_SECRET`)
-4. Note your service URL: `https://metis-api.onrender.com`
+1. Go to [dashboard.render.com/blueprints](https://dashboard.render.com/blueprints) → **New Blueprint Instance**
+2. Connect `priyanshi-100506/metis` — Render auto-reads `render.yaml`
+3. Fill in `DATABASE_URL` and `GEMINI_API_KEY` — `PIPELINE_SECRET` is auto-generated
+4. Deploy → **https://metis-api-x843.onrender.com**
 
 ### Frontend → Vercel
 
 1. **Vercel** → New Project → import repo → set **Root Directory** to `frontend`
-2. Add env vars: `VITE_API_BASE_URL`, `VITE_STREAM_URL`, `VITE_PIPELINE_SECRET`
-3. Deploy → note your URL: `https://metis-xyz.vercel.app`
+2. Add env vars:
+   - `VITE_API_BASE_URL=https://metis-api-x843.onrender.com/api/v1`
+   - `VITE_STREAM_URL=https://metis-api-x843.onrender.com/stream`
+3. Deploy → **https://metis-ashen-seven.vercel.app**
 
-### Wire CORS (critical)
+### Wire CORS (critical final step)
 
-Back in Render → Environment → set:
+In Render → Environment → set:
 ```
-ALLOWED_ORIGINS=https://metis-xyz.vercel.app
+ALLOWED_ORIGINS=https://metis-ashen-seven.vercel.app
 ```
 Then **Manual Deploy → Deploy latest commit**.
 
